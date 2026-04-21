@@ -18,7 +18,7 @@ CAPITAL = 1000
 RISK_PER_TRADE = 0.02
 MAX_WORKERS = 8
 
-STOCK_FILE = "us_stocks.txt"
+STOCK_FILE = "liquid_stocks.txt"
 LOG_FILE = "trade_log.json"
 SEEN_FILE = "seen_signals.json"
 
@@ -312,7 +312,7 @@ def run_scan():
         and "-" not in s
     ]
 
-    stocks = stocks[:10000]
+    stocks = stocks[:3872]
     print("Scanning:", len(stocks))
 
     universe_data = run_fast_universe_scan(stocks)

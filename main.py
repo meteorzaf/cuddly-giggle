@@ -46,15 +46,11 @@ def send_telegram(msg):
 
 def should_run():
     now = datetime.now(ZoneInfo("Asia/Singapore"))
-    # Singapore time assumed (your system time)
     hour = now.hour
-    minute = now.minute
 
-    # Run at 9:00 PM OR 10:00 PM
-    if (hour >= 21 and minute == 0) or (hour <= 4 and minute == 0):
-        return True
+    # Run from 9 PM to 4:59 AM SGT
+    return hour >= 21 or hour <= 4
 
-    return False
 
 # =========================
 # CLEAN SYMBOLS (YOUR FUNCTION)
@@ -392,11 +388,9 @@ while True:
                 print("ERROR:", e)
 
             last_run_hour = current_hour
+        else:
+            print(f"Already ran this hour: {now}")
     else:
         print(f"Outside active hours: {now}")
 
     time.sleep(60)
-    else:
-        print(f"⏸ Sleeping (outside trading hours): {now}")
-
-    time.sleep(60)  # check every minute

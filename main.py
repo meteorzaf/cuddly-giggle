@@ -316,7 +316,7 @@ def run_scan():
         and "-" not in s
     ]
 
-    stocks = stocks[:1000]
+    stocks = stocks[:10000]
     print("Scanning:", len(stocks))
 
     universe_data = run_fast_universe_scan(stocks)

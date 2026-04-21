@@ -6,6 +6,7 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # =========================
 # CONFIG
@@ -44,8 +45,7 @@ def send_telegram(msg):
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
 def should_run():
-    now = datetime.now()
-
+    now = datetime.now(ZoneInfo("Asia/Singapore"))
     # Singapore time assumed (your system time)
     hour = now.hour
     minute = now.minute
@@ -379,20 +379,23 @@ def run_scan():
 last_run_hour = None
 
 while True:
-    now = datetime.now()
+    now = datetime.now(ZoneInfo("Asia/Singapore"))
     current_hour = now.strftime("%Y-%m-%d %H")
 
-    if should_run():
+    if should_run_now():
         if last_run_hour != current_hour:
             print(f"Running scan at {now}")
-            
+
             try:
                 run_scan()
             except Exception as e:
                 print("ERROR:", e)
 
             last_run_hour = current_hour
+    else:
+        print(f"Outside active hours: {now}")
 
+    time.sleep(60)
     else:
         print(f"⏸ Sleeping (outside trading hours): {now}")
 

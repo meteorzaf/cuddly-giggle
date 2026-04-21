@@ -51,7 +51,7 @@ def should_run():
     minute = now.minute
 
     # Run at 9:00 PM OR 10:00 PM
-    if (hour == 21 and minute == 0) or (hour == 22 and minute == 0):
+    if (hour >= 21 and minute == 0) or (hour <= 4 and minute == 0):
         return True
 
     return False
@@ -376,16 +376,24 @@ def run_scan():
 # =========================
 # RUN
 # =========================
-last_run = None
+last_run_hour = None
 
 while True:
     now = datetime.now()
+    current_hour = now.strftime("%Y-%m-%d %H")
 
-    if should_run():
-        # Prevent double run within same minute
-        if last_run != now.strftime("%Y-%m-%d %H:%M"):
-            print("Running scheduled scan...")
-            run_scan()
-            last_run = now.strftime("%Y-%m-%d %H:%M")
+    if should_run_now():
+        if last_run_hour != current_hour:
+            print(f"Running scan at {now}")
+            
+            try:
+                run_scan()
+            except Exception as e:
+                print("ERROR:", e)
 
-    time.sleep(30)  # check every 30 sec
+            last_run_hour = current_hour
+
+    else:
+        print(f"⏸ Sleeping (outside trading hours): {now}")
+
+    time.sleep(60)  # check every minute

@@ -378,7 +378,7 @@ while True:
     now = datetime.now(ZoneInfo("Asia/Singapore"))
     current_hour = now.strftime("%Y-%m-%d %H")
 
-    if should_run_now():
+    if should_run():
         if last_run_hour != current_hour:
             print(f"Running scan at {now}")
 

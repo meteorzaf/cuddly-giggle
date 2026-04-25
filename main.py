@@ -22,6 +22,94 @@ STOCK_FILE = "liquid_stocks.txt"
 LOG_FILE = "trade_log.json"
 SEEN_FILE = "seen_signals.json"
 
+PAPER_TRADE_FILE = "paper_trades.csv"
+MAX_ALERTS = 3
+
+RUN_INTERVAL_MINUTES = 60
+MAX_SCAN_STOCKS = 3872
+
+def save_paper_trade(signal):
+    file_exists = os.path.exists(PAPER_TRADE_FILE)
+
+    with open(PAPER_TRADE_FILE, "a", newline="") as f:
+        writer = csv.writer(f)
+
+        if not file_exists:
+            writer.writerow([
+                "date", "ticker", "entry", "sl", "tp",
+                "size", "status", "result", "close_date"
+            ])
+
+        writer.writerow([
+            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            signal["ticker"],
+            round(signal["entry"], 2),
+            round(signal["sl"], 2),
+            round(signal["tp"], 2),
+            round(signal["size"], 2),
+            "OPEN",
+            "",
+            ""
+        ])
+
+def count_open_trades():
+    if not os.path.exists(PAPER_TRADE_FILE):
+        return 0
+
+    df = pd.read_csv(PAPER_TRADE_FILE)
+
+    if df.empty or "status" not in df.columns:
+        return 0
+
+    return len(df[df["status"] == "OPEN"])
+
+def update_open_paper_trades():
+    if not os.path.exists(PAPER_TRADE_FILE):
+        return
+
+    df_trades = pd.read_csv(PAPER_TRADE_FILE)
+
+    if df_trades.empty:
+        return
+
+    for i, trade in df_trades.iterrows():
+        if trade["status"] != "OPEN":
+            continue
+
+        ticker = trade["ticker"]
+        sl = float(trade["sl"])
+        tp = float(trade["tp"])
+
+        try:
+            data = yf.download(
+                ticker,
+                period="10d",
+                interval="1d",
+                progress=False,
+                threads=False
+            )
+
+            if data.empty:
+                continue
+
+            latest_high = float(data["High"].iloc[-1])
+            latest_low = float(data["Low"].iloc[-1])
+
+            if latest_low <= sl:
+                df_trades.at[i, "status"] = "CLOSED"
+                df_trades.at[i, "result"] = "LOSS"
+                df_trades.at[i, "close_date"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+            elif latest_high >= tp:
+                df_trades.at[i, "status"] = "CLOSED"
+                df_trades.at[i, "result"] = "WIN"
+                df_trades.at[i, "close_date"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        except Exception as e:
+            print(f"Could not update {ticker}: {e}")
+
+    df_trades.to_csv(PAPER_TRADE_FILE, index=False)
+
 def load_seen():
     if os.path.exists(SEEN_FILE):
         try:
@@ -42,15 +130,31 @@ def save_seen(data):
 # =========================
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
-def should_run():
-    now = datetime.now(ZoneInfo("Asia/Singapore"))
-    hour = now.hour
+    try:
+        response = requests.post(
+            url,
+            data={"chat_id": CHAT_ID, "text": msg},
+            timeout=10
+        )
 
-    # Run from 9 PM to 4:59 AM SGT
-    return hour >= 21 or hour <= 4
+        print("Telegram status:", response.status_code)
+        print("Telegram response:", response.text)
 
+    except Exception as e:
+        print("Telegram error:", e)
+
+def market_is_open_now():
+    now_ny = datetime.now(ZoneInfo("America/New_York"))
+
+    # Monday=0, Sunday=6
+    if now_ny.weekday() >= 5:
+        return False
+
+    market_open = now_ny.replace(hour=9, minute=30, second=0, microsecond=0)
+    market_close = now_ny.replace(hour=16, minute=0, second=0, microsecond=0)
+
+    return market_open <= now_ny <= market_close
 
 # =========================
 # CLEAN SYMBOLS (YOUR FUNCTION)
@@ -171,7 +275,6 @@ def fetch_data(ticker):
         )
 
         if df is None or df.empty or len(df) < 30:
-            print(ticker, "-> empty or too short")
             return None
 
         # Flatten Yahoo columns if needed
@@ -187,11 +290,9 @@ def fetch_data(ticker):
         close_std = float(df["Close"].astype(float).std())
 
         if vol_mean < 100000:
-            print(ticker, "-> low volume")
             return None
 
         if close_std == 0:
-            print(ticker, "-> flat price")
             return None
 
         return ticker, df
@@ -285,13 +386,18 @@ def analyze(ticker, df):
     sl = close * 0.97
     tp = close * 1.06
 
+    risk_per_share = close - sl
+    risk_amount = CAPITAL * RISK_PER_TRADE
+    size = risk_amount / risk_per_share if risk_per_share > 0 else 0
+
     return {
         "ticker": ticker,
         "entry": close,
         "sl": sl,
         "tp": tp,
         "score": score,
-        "reasons": ", ".join(reasons)
+        "reasons": ", ".join(reasons),
+        "size": size
     }
 
 
@@ -299,29 +405,40 @@ def analyze(ticker, df):
 # SCANNER ENGINE
 # =========================
 def run_scan():
+    print("Bot started...")
+    print(f"Run time: {datetime.now()}")
+
+    send_telegram("✅ Bot started scanning.")
+    print("Telegram test sent")
+
+    with open("debug_log.txt", "a") as f:
+        f.write("Bot started\n")
+
+    update_open_paper_trades()
+    print("Paper trades updated")
+
+    print("Bot started...")
+
+    update_open_paper_trades()
+    print("Paper trades updated")
+
+    if count_open_trades() >= 5:
+        print("Max open trades reached")
+        send_telegram("⚠️ Max open trades reached. Skipping new signals.")
+        return
+
     if not market_ok():
+        print("Market bearish")
         send_telegram("⚠️ Market bearish — no trades.")
         return
 
     stocks = get_all_us_stocks()
-    print("Clean universe size:", len(stocks))
-
-    stocks = [
-        s for s in stocks
-        if len(s) <= 5
-        and "-" not in s
-    ]
-
-    stocks = stocks[:3872]
-    print("Scanning:", len(stocks))
+    print("RAW / CLEAN STOCKS LOADED:", len(stocks))
+    stocks = stocks[:MAX_SCAN_STOCKS]
+    print("CAPPED STOCKS:", len(stocks))
 
     universe_data = run_fast_universe_scan(stocks)
-
-    if not universe_data:
-        print("No universe data returned.")
-        return
-
-    print("Universe candidates:", len(universe_data))
+    print("Fetched valid data:", len(universe_data))
 
     results = []
 
@@ -330,67 +447,64 @@ def run_scan():
         if r:
             results.append(r)
 
+    print("Signals found:", len(results))
+
+    results = [r for r in results if r["score"] >= 5]
+    print("High conviction signals:", len(results))
+
+    results = sorted(results, key=lambda x: x["score"], reverse=True)[:MAX_ALERTS]
     if not results:
-        print("No strong setups this cycle.")
-        send_telegram("No strong setups this cycle.")
+        print("No signals found")
+        send_telegram("No strong setups today.")
         return
 
-    # Top 5 only
-    results = sorted(results, key=lambda x: x["score"], reverse=True)[:5]
-
-    seen = load_seen()
-    new_results = []
+    msg = "📊 PAPER TRADE SIGNALS\n\n"
 
     for r in results:
-        key = f"{r['ticker']}_{round(r['entry'], 2)}"
-        if key not in seen:
-            new_results.append(r)
-            seen[key] = time.time()
+        if r["score"] >= 6:
+            tag = "🔥 HIGH PRIORITY"
+        elif r["score"] >= 5:
+            tag = "✅ GOOD"
+        else:
+            tag = "⚠️ WEAK"
 
-    save_seen(seen)
-
-    if not new_results:
-        print("No new top-5 alerts to send.")
-        return
-        msg = "No new top-5 alerts to send."
-
-    msg = "📊 TOP 5 SCANNER ALERTS\n\n"
-
-    for r in new_results:
         msg += (
-            f"{r['ticker']}\n"
+            f"{r['ticker']} {tag}\n"
             f"Score: {r['score']}\n"
+            f"Reason: {r['reasons']}\n"
             f"Entry: {r['entry']:.2f}\n"
             f"SL: {r['sl']:.2f}\n"
             f"TP: {r['tp']:.2f}\n"
-            f"Why: {r.get('reasons', 'N/A')}\n\n"
+            f"Size: {r['size']:.2f} shares\n\n"
         )
+        save_paper_trade(r)
 
+    print("Sending Telegram message...")
     send_telegram(msg)
+    print("Done.")
+
 
 
 # =========================
 # RUN
 # =========================
-last_run_hour = None
+if __name__ == "__main__":
+    last_run_time = None
 
-while True:
-    now = datetime.now(ZoneInfo("Asia/Singapore"))
-    current_hour = now.strftime("%Y-%m-%d %H")
+    while True:
+        if market_is_open_now():
+            now = datetime.now()
 
-    if should_run():
-        if last_run_hour != current_hour:
-            print(f"Running scan at {now}")
-
-            try:
+            if (
+                last_run_time is None
+                or (now - last_run_time).total_seconds() >= RUN_INTERVAL_MINUTES * 60
+            ):
+                print("Market open. Running scan...")
                 run_scan()
-            except Exception as e:
-                print("ERROR:", e)
-
-            last_run_hour = current_hour
+                last_run_time = now
+            else:
+                print("Market open. Waiting for next interval...")
         else:
-            print(f"Already ran this hour: {now}")
-    else:
-        print(f"Outside active hours: {now}")
+            print("Market closed. Sleeping...")
 
-    time.sleep(60)
+        time.sleep(60)

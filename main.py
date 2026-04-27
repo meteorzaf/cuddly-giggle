@@ -67,6 +67,23 @@ def update_open_paper_trades():
     if not os.path.exists(PAPER_TRADE_FILE):
         return
 
+    if os.path.getsize(PAPER_TRADE_FILE) == 0:
+        print("paper_trades.csv is empty. Skipping update.")
+        return
+
+    try:
+        df_trades = pd.read_csv(PAPER_TRADE_FILE)
+    except pd.errors.EmptyDataError:
+        print("paper_trades.csv has no columns. Skipping update.")
+        return
+
+    if df_trades.empty:
+        return
+
+    if "status" not in df_trades.columns:
+        print("paper_trades.csv missing status column. Skipping update.")
+        return
+
     df_trades = pd.read_csv(PAPER_TRADE_FILE)
 
     if df_trades.empty:
@@ -109,6 +126,15 @@ def update_open_paper_trades():
             print(f"Could not update {ticker}: {e}")
 
     df_trades.to_csv(PAPER_TRADE_FILE, index=False)
+
+def ensure_paper_trade_file():
+    if not os.path.exists(PAPER_TRADE_FILE) or os.path.getsize(PAPER_TRADE_FILE) == 0:
+        with open(PAPER_TRADE_FILE, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "date", "ticker", "entry", "sl", "tp",
+                "size", "status", "result", "close_date"
+            ])
 
 def load_seen():
     if os.path.exists(SEEN_FILE):
@@ -419,6 +445,7 @@ def run_scan():
 
     print("Bot started...")
 
+    ensure_paper_trade_file()
     update_open_paper_trades()
     print("Paper trades updated")
 

@@ -17,7 +17,7 @@ CHAT_ID = os.getenv("CHAT_ID")
 
 CAPITAL = 1000
 RISK_PER_TRADE = 0.02
-MAX_WORKERS = 8
+MAX_WORKERS = 12
 
 STOCK_FILE = "liquid_stocks.txt"
 LOG_FILE = "trade_log.json"
@@ -290,7 +290,7 @@ import time
 
 def fetch_data(ticker):
     try:
-        time.sleep(0.03)
+        time.sleep(0.01)
 
         df = yf.download(
             ticker,

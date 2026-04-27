@@ -450,7 +450,7 @@ def run_scan():
     update_open_paper_trades()
     print("Paper trades updated")
 
-    if count_open_trades() >= 5:
+    if count_open_trades() >= 20:
         print("Max open trades reached")
         send_telegram("⚠️ Max open trades reached. Skipping new signals.")
         return

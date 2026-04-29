@@ -454,9 +454,9 @@ def run_scan():
     print("Paper trades updated")
 
     if ENABLE_MAX_OPEN_TRADES and count_open_trades() >= MAX_OPEN_TRADES:
-    print("Max open trades reached")
-    send_telegram("⚠️ Max open trades reached. Skipping new signals.")
-    return
+        print("Max open trades reached")
+        send_telegram("⚠️ Max open trades reached. Skipping new signals.")
+        return
 
     if not market_ok():
         print("Market bearish")

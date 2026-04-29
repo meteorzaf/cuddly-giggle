@@ -29,6 +29,9 @@ MAX_ALERTS = 3
 RUN_INTERVAL_MINUTES = 60
 MAX_SCAN_STOCKS = 3872
 
+ENABLE_MAX_OPEN_TRADES = False
+MAX_OPEN_TRADES = 20
+
 def save_paper_trade(signal):
     file_exists = os.path.exists(PAPER_TRADE_FILE)
 
@@ -450,10 +453,10 @@ def run_scan():
     update_open_paper_trades()
     print("Paper trades updated")
 
-    if count_open_trades() >= 20:
-        print("Max open trades reached")
-        send_telegram("⚠️ Max open trades reached. Skipping new signals.")
-        return
+    if ENABLE_MAX_OPEN_TRADES and count_open_trades() >= MAX_OPEN_TRADES:
+    print("Max open trades reached")
+    send_telegram("⚠️ Max open trades reached. Skipping new signals.")
+    return
 
     if not market_ok():
         print("Market bearish")

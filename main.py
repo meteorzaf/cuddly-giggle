@@ -32,6 +32,10 @@ MAX_SCAN_STOCKS = 3872
 ENABLE_MAX_OPEN_TRADES = False
 MAX_OPEN_TRADES = 20
 
+MIN_PRICE = 5
+MIN_AVG_VOLUME = 500000
+MIN_SCORE = 6
+
 def save_paper_trade(signal):
     file_exists = os.path.exists(PAPER_TRADE_FILE)
 
@@ -307,6 +311,15 @@ def fetch_data(ticker):
         if df is None or df.empty or len(df) < 30:
             return None
 
+        latest_close = float(df["Close"].iloc[-1])
+        avg_volume = float(df["Volume"].mean())
+    
+        if latest_close < MIN_PRICE:
+            return None
+        
+        if avg_volume < MIN_AVG_VOLUME:
+            return None
+
         # Flatten Yahoo columns if needed
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
@@ -377,6 +390,10 @@ def analyze(ticker, df):
     prev = df.iloc[-2]
 
     close = float(latest["Close"])
+    open_price = float(latest["Open"])
+
+    if close < open_price:
+        return None
     ma20 = float(latest["MA20"])
     ma50 = float(latest["MA50"])
     vol = float(latest["Volume"])
@@ -396,6 +413,10 @@ def analyze(ticker, df):
         score += 1
         reasons.append("above MA20")
 
+    if ma20 > ma50:
+    score += 2
+    reasons.append("MA20 above MA50")
+
     change_1bar = (close / float(prev["Close"]) - 1) * 100
     if change_1bar > 0.5:
         score += 2
@@ -406,13 +427,12 @@ def analyze(ticker, df):
         reasons.append("volume spike")
 
     high_10 = float(df["High"].rolling(10).max().iloc[-1])
-    if close >= high_10 * 0.995:
+    if close >= high_10:
         score += 2
-        reasons.append("near breakout")
+        reasons.append("clean breakout")
 
-    if score < 3:
+    if score < MIN_SCORE:
         return None
-
     sl = close * 0.97
     tp = close * 1.06
 

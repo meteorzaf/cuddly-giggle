@@ -414,8 +414,8 @@ def analyze(ticker, df):
         reasons.append("above MA20")
 
     if ma20 > ma50:
-    score += 2
-    reasons.append("MA20 above MA50")
+        score += 2
+        reasons.append("MA20 above MA50")
 
     change_1bar = (close / float(prev["Close"]) - 1) * 100
     if change_1bar > 0.5:

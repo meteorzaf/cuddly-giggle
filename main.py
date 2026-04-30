@@ -296,13 +296,14 @@ def market_ok():
 import time
 
 def fetch_data(ticker):
+    FAILED_TICKERS = set()
     try:
-        time.sleep(0.01)
+        time.sleep(0.005)
 
         df = yf.download(
             ticker,
-            period="1mo",
-            interval="1h",
+            period="3mo",
+            interval="1d",
             progress=False,
             threads=False,
             auto_adjust=False
@@ -340,9 +341,13 @@ def fetch_data(ticker):
         if close_std == 0:
             return None
 
+        if ticker in FAILED_TICKERS:
+            return None
+
         return ticker, df
 
     except Exception as e:
+        FAILED_TICKERS.add(ticker)
         print(ticker, "fetch error:", e)
         return None
 # =========================
@@ -351,7 +356,7 @@ def fetch_data(ticker):
 def run_fast_universe_scan(stocks):
     results = []
 
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=12) as executor:
         futures = {executor.submit(fetch_data, s): s for s in stocks}
         data_map = {}
 
@@ -487,7 +492,8 @@ def run_scan():
 
     stocks = get_all_us_stocks()
     print("RAW / CLEAN STOCKS LOADED:", len(stocks))
-    stocks = stocks[:MAX_SCAN_STOCKS]
+    stocks = [s for s in stocks if len(s) <= 5]   # remove weird symbols
+    stocks = stocks[:2000]  # hard cap
     print("CAPPED STOCKS:", len(stocks))
 
     universe_data = run_fast_universe_scan(stocks)

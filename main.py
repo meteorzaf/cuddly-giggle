@@ -310,9 +310,6 @@ def fetch_data(ticker):
 
         if df is None or df.empty or len(df) < 30:
             return None
-
-        latest_close = float(df["Close"].iloc[-1])
-        avg_volume = float(df["Volume"].mean())
     
         if latest_close < MIN_PRICE:
             return None
@@ -323,6 +320,17 @@ def fetch_data(ticker):
         # Flatten Yahoo columns if needed
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
+        close_series = df["Close"]
+        volume_series = df["Volume"]
+        
+        if isinstance(close_series, pd.DataFrame):
+            close_series = close_series.iloc[:, 0]
+        
+        if isinstance(volume_series, pd.DataFrame):
+            volume_series = volume_series.iloc[:, 0]
+        
+        latest_close = float(close_series.iloc[-1])
+        avg_volume = float(volume_series.mean())
 
         required = {"Open", "High", "Low", "Close", "Volume"}
         if not required.issubset(set(df.columns)):

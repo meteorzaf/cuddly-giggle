@@ -185,8 +185,8 @@ def market_is_open_now():
     if now_ny.weekday() >= 5:
         return False
 
-    market_open = now_ny.replace(hour=9, minute=30, second=0, microsecond=0)
-    market_close = now_ny.replace(hour=16, minute=0, second=0, microsecond=0)
+    market_open = now_ny.replace(hour=9, minute=15, second=0, microsecond=0)
+    market_close = now_ny.replace(hour=15, minute=45, second=0, microsecond=0)
 
     return market_open <= now_ny <= market_close
 

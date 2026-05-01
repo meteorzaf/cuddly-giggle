@@ -27,7 +27,7 @@ PAPER_TRADE_FILE = "paper_trades.csv"
 MAX_ALERTS = 3
 
 RUN_INTERVAL_MINUTES = 60
-MAX_SCAN_STOCKS = 3872
+ = 375
 
 ENABLE_MAX_OPEN_TRADES = False
 MAX_OPEN_TRADES = 20
@@ -493,7 +493,7 @@ def run_scan():
     stocks = get_all_us_stocks()
     print("RAW / CLEAN STOCKS LOADED:", len(stocks))
     stocks = [s for s in stocks if len(s) <= 5]   # remove weird symbols
-    stocks = stocks[:2000]  # hard cap
+    stocks = stocks[:MAX_SCAN_STOCKS]  # hard cap
     print("CAPPED STOCKS:", len(stocks))
 
     universe_data = run_fast_universe_scan(stocks)

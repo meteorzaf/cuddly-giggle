@@ -36,6 +36,8 @@ MIN_PRICE = 5
 MIN_AVG_VOLUME = 500000
 MIN_SCORE = 6
 
+DAILY_TICKERS_FILE = "seen_today.txt"
+
 def save_paper_trade(signal):
     file_exists = os.path.exists(PAPER_TRADE_FILE)
 
@@ -377,9 +379,17 @@ def run_fast_universe_scan(stocks):
             if count % 50 == 0:
                 print(f"Processed {count} stocks... successes: {success}")
 
-    for ticker, df in data_map.items():
-        results.append((ticker, df))
-
+    seen_tickers_this_run = set()
+    
+    for ticker, df in universe_data:
+        if ticker in seen_tickers_this_run:
+            continue
+    
+        r = analyze(ticker, df)
+    
+        if r:
+            results.append(r)
+            seen_tickers_this_run.add(ticker)
     print("Final universe_data size:", len(results))
     return results
 
@@ -458,18 +468,59 @@ def analyze(ticker, df):
     }
 
 
+def load_seen_today():
+    if not os.path.exists(DAILY_TICKERS_FILE):
+        return set()
+
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    seen = set()
+
+    with open(DAILY_TICKERS_FILE, "r") as f:
+        for line in f:
+            date, ticker = line.strip().split(",")
+            if date == today:
+                seen.add(ticker)
+
+    return seen
+
+def save_seen_today(ticker):
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    with open(DAILY_TICKERS_FILE, "a") as f:
+        f.write(f"{today},{ticker}\n")
+        
+def cleanup_seen_file():
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    if not os.path.exists(DAILY_TICKERS_FILE):
+        return
+
+    lines = []
+
+    with open(DAILY_TICKERS_FILE, "r") as f:
+        for line in f:
+            if line.startswith(today):
+                lines.append(line)
+
+    with open(DAILY_TICKERS_FILE, "w") as f:
+        f.writelines(lines)
+
 # =========================
 # SCANNER ENGINE
 # =========================
 def run_scan():
     print("Bot started...")
     print(f"Run time: {datetime.now()}")
+    cleanup_seen_file()
 
     send_telegram("✅ Bot started scanning.")
     print("Telegram test sent")
 
     with open("debug_log.txt", "a") as f:
         f.write("Bot started\n")
+
+    seen_today = load_seen_today()
 
     update_open_paper_trades()
     print("Paper trades updated")
@@ -502,9 +553,16 @@ def run_scan():
     results = []
 
     for ticker, df in universe_data:
+    
+        if ticker in seen_today:
+            continue
+    
         r = analyze(ticker, df)
-        if r:
-            results.append(r)
+
+    if r:
+        results.append(r)
+        seen_today.add(ticker)
+        save_seen_today(ticker)
 
     print("Signals found:", len(results))
 

@@ -37,6 +37,8 @@ MIN_AVG_VOLUME = 500000
 MIN_SCORE = 6
 
 DAILY_TICKERS_FILE = "seen_today.txt"
+FAILED_TICKERS = set()
+
 
 def save_paper_trade(signal):
     file_exists = os.path.exists(PAPER_TRADE_FILE)
@@ -298,7 +300,6 @@ def market_ok():
 import time
 
 def fetch_data(ticker):
-    FAILED_TICKERS = set()
     try:
         time.sleep(0.005)
 
@@ -356,40 +357,32 @@ def fetch_data(ticker):
 # FAST UNIVERSE SCAN (YOUR FUNCTION INTEGRATED)
 # =========================
 def run_fast_universe_scan(stocks):
-    results = []
+    data_map = {}
 
-    with ThreadPoolExecutor(max_workers=12) as executor:
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = {executor.submit(fetch_data, s): s for s in stocks}
-        data_map = {}
 
         count = 0
         success = 0
 
         for f in as_completed(futures):
             count += 1
+
             try:
                 res = f.result()
                 if res:
                     ticker, df = res
                     data_map[ticker] = df
                     success += 1
+
             except Exception as e:
                 print("Future error:", e)
 
-            if count % 50 == 0:
+            if count % 100 == 0:
                 print(f"Processed {count} stocks... successes: {success}")
 
-    seen_tickers_this_run = set()
-    
-    for ticker, df in universe_data:
-        if ticker in seen_tickers_this_run:
-            continue
-    
-        r = analyze(ticker, df)
-    
-        if r:
-            results.append(r)
-            seen_tickers_this_run.add(ticker)
+    results = list(data_map.items())
+
     print("Final universe_data size:", len(results))
     return results
 
@@ -522,11 +515,6 @@ def run_scan():
 
     seen_today = load_seen_today()
 
-    update_open_paper_trades()
-    print("Paper trades updated")
-
-    print("Bot started...")
-
     ensure_paper_trade_file()
     update_open_paper_trades()
     print("Paper trades updated")
@@ -551,19 +539,16 @@ def run_scan():
     print("Fetched valid data:", len(universe_data))
 
     results = []
-
-    for ticker, df in universe_data:
     
+    for ticker, df in universe_data:
         if ticker in seen_today:
             continue
     
         r = analyze(ticker, df)
-
-    if r:
-        results.append(r)
-        seen_today.add(ticker)
-        save_seen_today(ticker)
-
+    
+        if r:
+            results.append(r)
+    
     print("Signals found:", len(results))
 
     results = [r for r in results if r["score"] >= 5]
@@ -584,7 +569,7 @@ def run_scan():
             tag = "✅ GOOD"
         else:
             tag = "⚠️ WEAK"
-
+    
         msg += (
             f"{r['ticker']} {tag}\n"
             f"Score: {r['score']}\n"
@@ -594,8 +579,10 @@ def run_scan():
             f"TP: {r['tp']:.2f}\n"
             f"Size: {r['size']:.2f} shares\n\n"
         )
+    
         save_paper_trade(r)
-
+        save_seen_today(r["ticker"])
+    
     print("Sending Telegram message...")
     send_telegram(msg)
     print("Done.")

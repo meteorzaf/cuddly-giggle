@@ -479,7 +479,7 @@ def analyze(ticker, df):
     size = risk_amount / risk_per_share if risk_per_share > 0 else 0
 
     if SKIP_IF_ONE_SHARE_RISK_TOO_HIGH and risk_per_share > MAX_RISK_PER_TRADE:
-    return None
+        return None
 
     size = int(size)
 

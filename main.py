@@ -335,8 +335,8 @@ def fetch_data(ticker):
         avg_volume = float(volume_series.mean())
         close_std = float(close_series.std())
 
-        if latest_close < MIN_PRICE:
-            return None
+#        if latest_close < MIN_PRICE:
+#            return None
 
         if avg_volume < MIN_AVG_VOLUME:
             return None
@@ -443,8 +443,12 @@ def analyze(ticker, df):
 
     if score < MIN_SCORE:
         return None
-    sl = close * 0.97
-    tp = close * 1.06
+    if close >= 100:
+        sl = close * 0.985   # 1.5% stop loss
+        tp = close * 1.04    # 4% take profit
+    else:
+        sl = close * 0.97    # 3% stop loss
+        tp = close * 1.06    # 6% take profit
 
     risk_per_share = close - sl
     risk_amount = CAPITAL * RISK_PER_TRADE

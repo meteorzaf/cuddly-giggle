@@ -36,8 +36,13 @@ MIN_PRICE = 5
 MIN_AVG_VOLUME = 500000
 MIN_SCORE = 6
 
+MAX_RISK_PER_TRADE = CAPITAL * RISK_PER_TRADE
+SKIP_IF_ONE_SHARE_RISK_TOO_HIGH = True
+
 DAILY_TICKERS_FILE = "seen_today.txt"
 FAILED_TICKERS = set()
+
+BLOCK_REPEAT_LOSERS_SAME_DAY = True
 
 
 def save_paper_trade(signal):
@@ -226,6 +231,25 @@ def clean_symbol_list(symbols):
         cleaned.append(s)
 
     return sorted(list(set(cleaned)))
+
+def lost_today(ticker):
+    if not os.path.exists(PAPER_TRADE_FILE):
+        return False
+
+    df = pd.read_csv(PAPER_TRADE_FILE)
+
+    if df.empty:
+        return False
+
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    losses_today = df[
+        (df["ticker"] == ticker) &
+        (df["result"] == "LOSS") &
+        (df["close_date"].astype(str).str.startswith(today))
+    ]
+
+    return len(losses_today) > 0
 
 # =========================
 # LOAD UNIVERSE
@@ -454,6 +478,14 @@ def analyze(ticker, df):
     risk_amount = CAPITAL * RISK_PER_TRADE
     size = risk_amount / risk_per_share if risk_per_share > 0 else 0
 
+    if SKIP_IF_ONE_SHARE_RISK_TOO_HIGH and risk_per_share > MAX_RISK_PER_TRADE:
+    return None
+
+    size = int(size)
+
+    if size < 1:
+        return None
+
     return {
         "ticker": ticker,
         "entry": close,
@@ -546,6 +578,9 @@ def run_scan():
     
     for ticker, df in universe_data:
         if ticker in seen_today:
+            continue
+
+        if BLOCK_REPEAT_LOSERS_SAME_DAY and lost_today(ticker):
             continue
     
         r = analyze(ticker, df)

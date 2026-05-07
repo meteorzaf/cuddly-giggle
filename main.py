@@ -15,7 +15,7 @@ import csv
 BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-CAPITAL = 1000
+CAPITAL = 100
 RISK_PER_TRADE = 0.02
 MAX_WORKERS = 12
 
@@ -43,6 +43,10 @@ DAILY_TICKERS_FILE = "seen_today.txt"
 FAILED_TICKERS = set()
 
 BLOCK_REPEAT_LOSERS_SAME_DAY = True
+
+MAX_ATR_PCT = 0.05          # skip stocks moving too wildly
+MAX_LOSS_PCT = 0.04         # max SL distance from entry
+BLOCK_REPEAT_LOSERS = True
 
 
 def save_paper_trade(signal):
@@ -250,6 +254,33 @@ def lost_today(ticker):
     ]
 
     return len(losses_today) > 0
+    
+def lost_recently(ticker, days=3):
+    if not os.path.exists(PAPER_TRADE_FILE):
+        return False
+
+    try:
+        df = pd.read_csv(PAPER_TRADE_FILE)
+    except:
+        return False
+
+    if df.empty or "ticker" not in df.columns or "result" not in df.columns:
+        return False
+
+    if "close_date" not in df.columns:
+        return False
+
+    df["close_date"] = pd.to_datetime(df["close_date"], errors="coerce")
+
+    cutoff = datetime.now() - pd.Timedelta(days=days)
+
+    recent_losses = df[
+        (df["ticker"] == ticker) &
+        (df["result"] == "LOSS") &
+        (df["close_date"] >= cutoff)
+    ]
+
+    return len(recent_losses) > 0
 
 # =========================
 # LOAD UNIVERSE
@@ -425,6 +456,16 @@ def analyze(ticker, df):
 
     close = float(latest["Close"])
     open_price = float(latest["Open"])
+    df["ATR14"] = (df["High"] - df["Low"]).rolling(14).mean()
+    atr14 = float(df["ATR14"].iloc[-1])
+    
+    if pd.isna(atr14):
+        return None
+    
+    atr_pct = atr14 / close
+    
+    if atr_pct > MAX_ATR_PCT:
+        return None
 
     if close < open_price:
         return None
@@ -468,11 +509,19 @@ def analyze(ticker, df):
     if score < MIN_SCORE:
         return None
     if close >= 100:
-        sl = close * 0.985   # 1.5% stop loss
-        tp = close * 1.04    # 4% take profit
+        sl = close * 0.985
+        tp = close * 1.035
     else:
-        sl = close * 0.97    # 3% stop loss
-        tp = close * 1.06    # 6% take profit
+        sl = close * 0.97
+        tp = close * 1.06
+    
+    if sl >= close:
+        return None
+    
+    loss_pct = (close - sl) / close
+    
+    if loss_pct > MAX_LOSS_PCT:
+        return None
 
     risk_per_share = close - sl
     risk_amount = CAPITAL * RISK_PER_TRADE
@@ -579,8 +628,8 @@ def run_scan():
     for ticker, df in universe_data:
         if ticker in seen_today:
             continue
-
-        if BLOCK_REPEAT_LOSERS_SAME_DAY and lost_today(ticker):
+    
+        if BLOCK_REPEAT_LOSERS and lost_recently(ticker, days=3):
             continue
     
         r = analyze(ticker, df)
@@ -616,6 +665,7 @@ def run_scan():
             f"Entry: {r['entry']:.2f}\n"
             f"SL: {r['sl']:.2f}\n"
             f"TP: {r['tp']:.2f}\n"
+            f"Risk/Share: {(r['entry'] - r['sl']):.2f}\n"
             f"Size: {r['size']:.2f} shares\n\n"
         )
     

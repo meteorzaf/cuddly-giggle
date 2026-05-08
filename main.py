@@ -533,12 +533,21 @@ def analyze(ticker, df):
 
     if score < MIN_SCORE:
         return None
+        
+    # Base SL/TP
     if close >= 100:
-        sl = close * 0.985
-        tp = close * 1.035
+        base_sl_pct = 0.015
+        base_tp_pct = 0.035
     else:
-        sl = close * 0.97
-        tp = close * 1.06
+        base_sl_pct = 0.03
+        base_tp_pct = 0.06
+    
+    fixed_fee_pct = (FEE_PER_TRADE * 2) / close
+    slippage_pct = SLIPPAGE_PCT * 2
+    cost_buffer_pct = fixed_fee_pct + slippage_pct
+    
+    sl = close * (1 - base_sl_pct + cost_buffer_pct)
+    tp = close * (1 + base_tp_pct + cost_buffer_pct)
     
     if sl >= close:
         return None

@@ -48,6 +48,8 @@ MAX_ATR_PCT = 0.05          # skip stocks moving too wildly
 MAX_LOSS_PCT = 0.04         # max SL distance from entry
 BLOCK_REPEAT_LOSERS = True
 
+FEE_PER_TRADE = 0.02
+SLIPPAGE_PCT = 0.001
 
 def save_paper_trade(signal):
     file_exists = os.path.exists(PAPER_TRADE_FILE)
@@ -101,13 +103,9 @@ def update_open_paper_trades():
     if df_trades.empty:
         return
 
-    if "status" not in df_trades.columns:
-        print("paper_trades.csv missing status column. Skipping update.")
-        return
-
-    df_trades = pd.read_csv(PAPER_TRADE_FILE)
-
-    if df_trades.empty:
+    required_cols = {"status", "ticker", "entry", "sl", "tp", "size"}
+    if not required_cols.issubset(set(df_trades.columns)):
+        print("paper_trades.csv missing required columns. Skipping update.")
         return
 
     for i, trade in df_trades.iterrows():
@@ -115,8 +113,10 @@ def update_open_paper_trades():
             continue
 
         ticker = trade["ticker"]
+        entry = float(trade["entry"])
         sl = float(trade["sl"])
         tp = float(trade["tp"])
+        size = float(trade["size"])
 
         try:
             data = yf.download(
@@ -127,27 +127,52 @@ def update_open_paper_trades():
                 threads=False
             )
 
-            if data.empty:
+            if data is None or data.empty:
                 continue
+
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = data.columns.get_level_values(0)
 
             latest_high = float(data["High"].iloc[-1])
             latest_low = float(data["Low"].iloc[-1])
 
+            closed_price = None
+            result_label = None
+
             if latest_low <= sl:
-                df_trades.at[i, "status"] = "CLOSED"
-                df_trades.at[i, "result"] = "LOSS"
-                df_trades.at[i, "close_date"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                closed_price = sl
+                result_label = "LOSS"
 
             elif latest_high >= tp:
-                df_trades.at[i, "status"] = "CLOSED"
-                df_trades.at[i, "result"] = "WIN"
-                df_trades.at[i, "close_date"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+                closed_price = tp
+                result_label = "WIN"
+
+            if closed_price is None:
+                continue
+
+            gross_pnl = (closed_price - entry) * size
+
+            buy_fee = FEE_PER_TRADE
+            sell_fee = FEE_PER_TRADE
+
+            slippage_cost = (
+                entry * size * SLIPPAGE_PCT
+                + closed_price * size * SLIPPAGE_PCT
+            )
+
+            net_pnl = gross_pnl - buy_fee - sell_fee - slippage_cost
+            net_pnl = round(net_pnl, 2)
+
+            df_trades.at[i, "status"] = "CLOSED"
+            df_trades.at[i, "result"] = result_label
+            df_trades.at[i, "close_date"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+            df_trades.at[i, "closed_at"] = round(closed_price, 2)
+            df_trades.at[i, "net_pnl"] = net_pnl
 
         except Exception as e:
             print(f"Could not update {ticker}: {e}")
 
     df_trades.to_csv(PAPER_TRADE_FILE, index=False)
-
 def ensure_paper_trade_file():
     if not os.path.exists(PAPER_TRADE_FILE) or os.path.getsize(PAPER_TRADE_FILE) == 0:
         with open(PAPER_TRADE_FILE, "w", newline="") as f:
@@ -602,7 +627,7 @@ def run_scan():
 
     ensure_paper_trade_file()
     update_open_paper_trades()
-    print("Paper trades updated")
+    print("Paper trades d")
 
     if ENABLE_MAX_OPEN_TRADES and count_open_trades() >= MAX_OPEN_TRADES:
         print("Max open trades reached")

@@ -60,7 +60,8 @@ def save_paper_trade(signal):
         if not file_exists:
             writer.writerow([
                 "date", "ticker", "entry", "sl", "tp",
-                "size", "status", "result", "close_date"
+                "size", "status", "result", "close_date",
+                "closed_at", "net_pnl"
             ])
 
         writer.writerow([
@@ -646,7 +647,7 @@ def run_scan():
 
     ensure_paper_trade_file()
     update_open_paper_trades()
-    print("Paper trades d")
+    print("Paper trades updated")
 
     if ENABLE_MAX_OPEN_TRADES and count_open_trades() >= MAX_OPEN_TRADES:
         print("Max open trades reached")

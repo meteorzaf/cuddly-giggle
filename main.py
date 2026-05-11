@@ -505,6 +505,14 @@ def analyze(ticker, df):
     score = 0
     reasons = []
 
+    if close < 10:
+    # stricter rules
+    if avg_volume < 1000000:
+        return None
+
+    if score < MIN_SCORE + 1:
+        return None
+
     if close > ma50:
         score += 2
         reasons.append("above MA50")
@@ -558,8 +566,25 @@ def analyze(ticker, df):
         return None
 
     risk_per_share = close - sl
+    
+    if risk_per_share <= 0:
+        return None
+    
     risk_amount = CAPITAL * RISK_PER_TRADE
-    size = risk_amount / risk_per_share if risk_per_share > 0 else 0
+    
+    # size based on risk
+    size = risk_amount / risk_per_share
+    
+    # 🔥 NEW: cap by capital
+    max_affordable_size = CAPITAL / close
+    
+    size = min(size, max_affordable_size)
+    
+    # convert to whole shares
+    size = int(size)
+    
+    if size < 1:
+        return None
 
     if SKIP_IF_ONE_SHARE_RISK_TOO_HIGH and risk_per_share > MAX_RISK_PER_TRADE:
         return None

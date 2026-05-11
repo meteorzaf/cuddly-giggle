@@ -671,8 +671,8 @@ def run_scan():
     print("Telegram test sent")
 
     if not market_ok():
-    print("Market weak. Skipping trades.")
-    return
+        print("Market weak. Skipping trades.")
+        return
 
     with open("debug_log.txt", "a") as f:
         f.write("Bot started\n")

@@ -335,14 +335,18 @@ def market_ok():
         if spy is None or spy.empty or len(spy) < 60:
             return True, "⚠️ Market data unavailable. Proceeding."
 
-        # 🔥 FIX: flatten columns if multi-index
+        # 🔥 flatten multi-index
         if isinstance(spy.columns, pd.MultiIndex):
             spy.columns = spy.columns.get_level_values(0)
 
         close = spy["Close"]
 
-        # 🔥 FIX: handle if still DataFrame
+        # 🔥 critical fix: force Series
         if isinstance(close, pd.DataFrame):
+            close = close.squeeze()
+
+        # 🔥 ensure it's truly 1D
+        if len(close.shape) > 1:
             close = close.iloc[:, 0]
 
         ma20 = close.rolling(20).mean()

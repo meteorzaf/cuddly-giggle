@@ -648,17 +648,30 @@ def cleanup_seen_file():
         f.writelines(lines)
 
 def market_ok():
-    spy = yf.download("SPY", period="3mo", interval="1d", progress=False)
+    try:
+        spy = yf.download("SPY", period="3mo", interval="1d", progress=False)
 
-    if spy is None or spy.empty:
-        return True  # fallback
+        if spy is None or spy.empty or len(spy) < 50:
+            return True, "⚠️ Market data unavailable"
 
-    spy["MA50"] = spy["Close"].rolling(50).mean()
+        close = spy["Close"]
 
-    latest_close = float(spy["Close"].iloc[-1])
-    latest_ma50 = float(spy["MA50"].iloc[-1])
+        # 🔥 FORCE SCALAR (this solves everything)
+        latest_close = float(close.values[-1])
+        ma20 = float(close.rolling(20).mean().values[-1])
+        ma50 = float(close.rolling(50).mean().values[-1])
 
-    return latest_close > latest_ma50
+        market_good = latest_close > ma20 and latest_close > ma50
+
+        if market_good:
+            msg = f"✅ Market OK | SPY {latest_close:.2f}"
+        else:
+            msg = f"⚠️ Market Weak | SPY {latest_close:.2f}"
+
+        return market_good, msg
+
+    except Exception as e:
+        return True, f"⚠️ Market error: {e}"
 
 # =========================
 # SCANNER ENGINE
@@ -668,7 +681,6 @@ def run_scan():
     print(f"Run time: {datetime.now()}")
     cleanup_seen_file()
 
-    send_telegram("✅ Bot started scanning.")
     print("Telegram test sent")
 
 

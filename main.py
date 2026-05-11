@@ -338,19 +338,19 @@ def get_scalar(value):
     return float(value)
 
 
+def to_float(value):
+    try:
+        return float(value)
+    except:
+        return float(value.squeeze().iloc[-1] if hasattr(value.squeeze(), "iloc") else value.squeeze())
+
+
 def market_ok():
     try:
-        spy = yf.download(
-            "SPY",
-            period="6mo",
-            interval="1d",
-            progress=False,
-            threads=False,
-            auto_adjust=False
-        )
+        spy = yf.download("SPY", period="3mo", interval="1d", progress=False)
 
-        if spy is None or spy.empty or len(spy) < 60:
-            return True, "⚠️ Market data unavailable. Proceeding."
+        if spy is None or spy.empty or len(spy) < 50:
+            return True, "⚠️ Market data unavailable"
 
         if isinstance(spy.columns, pd.MultiIndex):
             spy.columns = spy.columns.get_level_values(0)
@@ -363,9 +363,9 @@ def market_ok():
         ma20 = close.rolling(20).mean()
         ma50 = close.rolling(50).mean()
 
-        latest_close = get_scalar(close.iloc[-1])
-        latest_ma20 = get_scalar(ma20.iloc[-1])
-        latest_ma50 = get_scalar(ma50.iloc[-1])
+        latest_close = to_float(close.iloc[-1])
+        latest_ma20 = to_float(ma20.iloc[-1])
+        latest_ma50 = to_float(ma50.iloc[-1])
 
         market_good = latest_close > latest_ma20 and latest_close > latest_ma50
 
@@ -387,7 +387,7 @@ def market_ok():
         return market_good, msg
 
     except Exception as e:
-        return True, f"⚠️ Market filter error: {e}. Proceeding cautiously."
+        return True, f"⚠️ Market error: {e}"
 # =========================
 # FETCH DATA (YOUR VERSION)
 # =========================

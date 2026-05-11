@@ -505,13 +505,7 @@ def analyze(ticker, df):
     score = 0
     reasons = []
 
-    if close < 10:
-    # stricter rules
-    if avg_volume < 1000000:
-        return None
 
-    if score < MIN_SCORE + 1:
-        return None
 
     if close > ma50:
         score += 2
@@ -538,6 +532,14 @@ def analyze(ticker, df):
     if close >= high_10:
         score += 2
         reasons.append("clean breakout")
+
+    if close < 10:
+    # stricter rules
+        if avg_volume < 1000000:
+            return None
+    
+        if score < MIN_SCORE + 1:
+            return None
 
     if score < MIN_SCORE:
         return None

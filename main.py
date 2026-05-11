@@ -329,26 +329,19 @@ import os
 import time
 
 def market_ok():
-    cache_file = "spy_cache.json"
-
-    if os.path.exists(cache_file):
-        with open(cache_file, "r") as f:
-            data = json.load(f)
-
-        if time.time() - data["time"] < 600:
-            return data["market_ok"], data["message"]
-
     try:
         spy = yf.download("SPY", period="6mo", interval="1d", progress=False)
 
         if spy is None or spy.empty or len(spy) < 60:
-            return True, "⚠️ Market filter unavailable. Proceeding cautiously."
+            return True, "⚠️ Market data unavailable. Proceeding."
 
+        # 🔥 FIX: flatten columns if multi-index
         if isinstance(spy.columns, pd.MultiIndex):
             spy.columns = spy.columns.get_level_values(0)
 
         close = spy["Close"]
 
+        # 🔥 FIX: handle if still DataFrame
         if isinstance(close, pd.DataFrame):
             close = close.iloc[:, 0]
 
@@ -370,23 +363,16 @@ def market_ok():
             )
         else:
             msg = (
-                f"⚠️ Market Weak — skipping new signals\n"
+                f"⚠️ Market Weak — skipping trades\n"
                 f"SPY: {latest_close:.2f}\n"
                 f"MA20: {latest_ma20:.2f}\n"
                 f"MA50: {latest_ma50:.2f}"
             )
 
-        with open(cache_file, "w") as f:
-            json.dump({
-                "time": time.time(),
-                "market_ok": market_good,
-                "message": msg
-            }, f)
-
         return market_good, msg
 
     except Exception as e:
-        return True, f"⚠️ Market filter error: {e}. Proceeding cautiously."
+        return True, f"⚠️ Market filter error: {e}"
 # =========================
 # FETCH DATA (YOUR VERSION)
 # =========================
@@ -670,9 +656,6 @@ def run_scan():
     send_telegram("✅ Bot started scanning.")
     print("Telegram test sent")
 
-    if not market_ok():
-        print("Market weak. Skipping trades.")
-        return
 
     with open("debug_log.txt", "a") as f:
         f.write("Bot started\n")

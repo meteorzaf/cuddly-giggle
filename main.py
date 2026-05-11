@@ -75,6 +75,8 @@ def save_paper_trade(signal):
             round(signal["size"], 2),
             "OPEN",
             "",
+            "",
+            "",
             ""
         ])
 
@@ -182,7 +184,8 @@ def ensure_paper_trade_file():
             writer = csv.writer(f)
             writer.writerow([
                 "date", "ticker", "entry", "sl", "tp",
-                "size", "status", "result", "close_date"
+                "size", "status", "result", "close_date",
+                "closed_at", "net_pnl"
             ])
 
 def load_seen():
@@ -347,7 +350,14 @@ def to_float(value):
 
 def market_ok():
     try:
-        spy = yf.download("SPY", period="3mo", interval="1d", progress=False)
+        spy = yf.download(
+            "SPY",
+            period="3mo",
+            interval="1d",
+            progress=False,
+            threads=False,
+            auto_adjust=False
+        )
 
         if spy is None or spy.empty or len(spy) < 50:
             return True, "⚠️ Market data unavailable"
@@ -360,12 +370,14 @@ def market_ok():
         if isinstance(close, pd.DataFrame):
             close = close.iloc[:, 0]
 
+        close = pd.to_numeric(close, errors="coerce").dropna()
+
         ma20 = close.rolling(20).mean()
         ma50 = close.rolling(50).mean()
 
-        latest_close = to_float(close.iloc[-1])
-        latest_ma20 = to_float(ma20.iloc[-1])
-        latest_ma50 = to_float(ma50.iloc[-1])
+        latest_close = float(close.iloc[-1])
+        latest_ma20 = float(ma20.iloc[-1])
+        latest_ma50 = float(ma50.iloc[-1])
 
         market_good = latest_close > latest_ma20 and latest_close > latest_ma50
 
@@ -647,31 +659,6 @@ def cleanup_seen_file():
     with open(DAILY_TICKERS_FILE, "w") as f:
         f.writelines(lines)
 
-def market_ok():
-    try:
-        spy = yf.download("SPY", period="3mo", interval="1d", progress=False)
-
-        if spy is None or spy.empty or len(spy) < 50:
-            return True, "⚠️ Market data unavailable"
-
-        close = spy["Close"]
-
-        # 🔥 FORCE SCALAR (this solves everything)
-        latest_close = float(close.values[-1])
-        ma20 = float(close.rolling(20).mean().values[-1])
-        ma50 = float(close.rolling(50).mean().values[-1])
-
-        market_good = latest_close > ma20 and latest_close > ma50
-
-        if market_good:
-            msg = f"✅ Market OK | SPY {latest_close:.2f}"
-        else:
-            msg = f"⚠️ Market Weak | SPY {latest_close:.2f}"
-
-        return market_good, msg
-
-    except Exception as e:
-        return True, f"⚠️ Market error: {e}"
 
 # =========================
 # SCANNER ENGINE

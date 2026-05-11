@@ -475,37 +475,37 @@ def analyze(ticker, df):
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
     df["VolAvg20"] = df["Volume"].rolling(20).mean()
+    df["ATR14"] = (df["High"] - df["Low"]).rolling(14).mean()
 
     latest = df.iloc[-1]
     prev = df.iloc[-2]
 
     close = float(latest["Close"])
     open_price = float(latest["Open"])
-    df["ATR14"] = (df["High"] - df["Low"]).rolling(14).mean()
-    atr14 = float(df["ATR14"].iloc[-1])
-    
-    if pd.isna(atr14):
-        return None
-    
-    atr_pct = atr14 / close
-    
-    if atr_pct > MAX_ATR_PCT:
-        return None
-
-    if close < open_price:
-        return None
     ma20 = float(latest["MA20"])
     ma50 = float(latest["MA50"])
     vol = float(latest["Volume"])
     volavg = float(latest["VolAvg20"])
+    atr14 = float(latest["ATR14"])
 
-    if pd.isna(ma20) or pd.isna(ma50) or pd.isna(volavg):
+    if pd.isna(ma20) or pd.isna(ma50) or pd.isna(volavg) or pd.isna(atr14):
         return None
+
+    if close < open_price:
+        return None
+
+    atr_pct = atr14 / close
+    if atr_pct > MAX_ATR_PCT:
+        return None
+
+    change_1bar = (close / float(prev["Close"]) - 1) * 100
+    if change_1bar < 1:
+        return None
+
+    avg_volume = float(df["Volume"].mean())
 
     score = 0
     reasons = []
-
-
 
     if close > ma50:
         score += 2
@@ -519,7 +519,6 @@ def analyze(ticker, df):
         score += 2
         reasons.append("MA20 above MA50")
 
-    change_1bar = (close / float(prev["Close"]) - 1) * 100
     if change_1bar > 0.5:
         score += 2
         reasons.append(f"+{change_1bar:.1f}% momentum")
@@ -528,70 +527,54 @@ def analyze(ticker, df):
         score += 2
         reasons.append("volume spike")
 
-    high_10 = float(df["High"].rolling(10).max().iloc[-1])
-    if close >= high_10:
+    previous_high_10 = float(df["High"].shift(1).rolling(10).max().iloc[-1])
+    if close > previous_high_10 * 1.01:
         score += 2
         reasons.append("clean breakout")
 
     if close < 10:
-    # stricter rules
         if avg_volume < 1000000:
             return None
-    
+
         if score < MIN_SCORE + 1:
             return None
 
     if score < MIN_SCORE:
         return None
-        
-    # Base SL/TP
+
     if close >= 100:
         base_sl_pct = 0.015
         base_tp_pct = 0.035
     else:
         base_sl_pct = 0.03
         base_tp_pct = 0.06
-    
+
     fixed_fee_pct = (FEE_PER_TRADE * 2) / close
     slippage_pct = SLIPPAGE_PCT * 2
     cost_buffer_pct = fixed_fee_pct + slippage_pct
-    
-    sl = close * (1 - base_sl_pct + cost_buffer_pct)
+
+    sl = close * (1 - base_sl_pct)
     tp = close * (1 + base_tp_pct + cost_buffer_pct)
-    
+
     if sl >= close:
         return None
-    
+
     loss_pct = (close - sl) / close
-    
     if loss_pct > MAX_LOSS_PCT:
         return None
 
     risk_per_share = close - sl
-    
     if risk_per_share <= 0:
-        return None
-    
-    risk_amount = CAPITAL * RISK_PER_TRADE
-    
-    # size based on risk
-    size = risk_amount / risk_per_share
-    
-    # 🔥 NEW: cap by capital
-    max_affordable_size = CAPITAL / close
-    
-    size = min(size, max_affordable_size)
-    
-    # convert to whole shares
-    size = int(size)
-    
-    if size < 1:
         return None
 
     if SKIP_IF_ONE_SHARE_RISK_TOO_HIGH and risk_per_share > MAX_RISK_PER_TRADE:
         return None
 
-    size = int(size)
+    risk_amount = CAPITAL * RISK_PER_TRADE
+    size_by_risk = risk_amount / risk_per_share
+    size_by_capital = CAPITAL / close
+
+    size = int(min(size_by_risk, size_by_capital))
 
     if size < 1:
         return None

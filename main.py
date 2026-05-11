@@ -51,6 +51,8 @@ BLOCK_REPEAT_LOSERS = True
 FEE_PER_TRADE = 0.02
 SLIPPAGE_PCT = 0.001
 
+SEND_MARKET_STATUS = True
+
 def save_paper_trade(signal):
     file_exists = os.path.exists(PAPER_TRADE_FILE)
 
@@ -327,54 +329,64 @@ import os
 import time
 
 def market_ok():
-    import yfinance as yf
-    import pandas as pd
-    import json, os, time
-
     cache_file = "spy_cache.json"
 
-    # USE CACHE (avoids rate limit)
     if os.path.exists(cache_file):
         with open(cache_file, "r") as f:
             data = json.load(f)
 
         if time.time() - data["time"] < 600:
-            return data["close"] > data["ma50"]
+            return data["market_ok"], data["message"]
 
     try:
-        spy = yf.download("SPY", period="3mo", interval="1d", progress=False)
+        spy = yf.download("SPY", period="6mo", interval="1d", progress=False)
 
         if spy is None or spy.empty or len(spy) < 60:
-            return True
+            return True, "⚠️ Market filter unavailable. Proceeding cautiously."
 
-        # 🔥 FORCE CLEAN STRUCTURE
+        if isinstance(spy.columns, pd.MultiIndex):
+            spy.columns = spy.columns.get_level_values(0)
+
         close = spy["Close"]
 
         if isinstance(close, pd.DataFrame):
-            close = close.iloc[:, 0]  # take first column
+            close = close.iloc[:, 0]
 
+        ma20 = close.rolling(20).mean()
         ma50 = close.rolling(50).mean()
 
-        latest_close = close.iloc[-1]
-        latest_ma50 = ma50.iloc[-1]
+        latest_close = float(close.iloc[-1])
+        latest_ma20 = float(ma20.iloc[-1])
+        latest_ma50 = float(ma50.iloc[-1])
 
-        # 🔥 FORCE SCALAR (this is the key)
-        latest_close = float(latest_close if not hasattr(latest_close, "__iter__") else list(latest_close)[0])
-        latest_ma50 = float(latest_ma50 if not hasattr(latest_ma50, "__iter__") else list(latest_ma50)[0])
+        market_good = latest_close > latest_ma20 and latest_close > latest_ma50
 
-        # cache result
+        if market_good:
+            msg = (
+                f"✅ Market OK\n"
+                f"SPY: {latest_close:.2f}\n"
+                f"MA20: {latest_ma20:.2f}\n"
+                f"MA50: {latest_ma50:.2f}"
+            )
+        else:
+            msg = (
+                f"⚠️ Market Weak — skipping new signals\n"
+                f"SPY: {latest_close:.2f}\n"
+                f"MA20: {latest_ma20:.2f}\n"
+                f"MA50: {latest_ma50:.2f}"
+            )
+
         with open(cache_file, "w") as f:
             json.dump({
                 "time": time.time(),
-                "close": latest_close,
-                "ma50": latest_ma50
+                "market_ok": market_good,
+                "message": msg
             }, f)
 
-        return latest_close > latest_ma50
+        return market_good, msg
 
-    except:
-        # fallback if Yahoo fails
-        return True
+    except Exception as e:
+        return True, f"⚠️ Market filter error: {e}. Proceeding cautiously."
 # =========================
 # FETCH DATA (YOUR VERSION)
 # =========================
@@ -483,6 +495,11 @@ def analyze(ticker, df):
 
     close = float(latest["Close"])
     open_price = float(latest["Open"])
+    gap = abs(open_price - float(prev["Close"])) / float(prev["Close"])
+    
+    if gap > 0.03:   # 3% gap
+        return None
+    
     ma20 = float(latest["MA20"])
     ma50 = float(latest["MA50"])
     vol = float(latest["Volume"])
@@ -629,6 +646,19 @@ def cleanup_seen_file():
     with open(DAILY_TICKERS_FILE, "w") as f:
         f.writelines(lines)
 
+def market_ok():
+    spy = yf.download("SPY", period="3mo", interval="1d", progress=False)
+
+    if spy is None or spy.empty:
+        return True  # fallback
+
+    spy["MA50"] = spy["Close"].rolling(50).mean()
+
+    latest_close = float(spy["Close"].iloc[-1])
+    latest_ma50 = float(spy["MA50"].iloc[-1])
+
+    return latest_close > latest_ma50
+
 # =========================
 # SCANNER ENGINE
 # =========================
@@ -639,6 +669,10 @@ def run_scan():
 
     send_telegram("✅ Bot started scanning.")
     print("Telegram test sent")
+
+    if not market_ok():
+    print("Market weak. Skipping trades.")
+    return
 
     with open("debug_log.txt", "a") as f:
         f.write("Bot started\n")
@@ -654,9 +688,14 @@ def run_scan():
         send_telegram("⚠️ Max open trades reached. Skipping new signals.")
         return
 
-    if not market_ok():
-        print("Market bearish")
-        send_telegram("⚠️ Market bearish — no trades.")
+    market_good, market_msg = market_ok()
+    
+    print(market_msg)
+    
+    if SEND_MARKET_STATUS:
+        send_telegram(market_msg)
+    
+    if not market_good:
         return
 
     stocks = get_all_us_stocks()

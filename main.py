@@ -328,33 +328,44 @@ def get_all_us_stocks():
 import os
 import time
 
+def get_scalar(value):
+    if isinstance(value, pd.DataFrame):
+        value = value.iloc[:, 0]
+
+    if isinstance(value, pd.Series):
+        return float(value.iloc[-1])
+
+    return float(value)
+
+
 def market_ok():
     try:
-        spy = yf.download("SPY", period="6mo", interval="1d", progress=False)
+        spy = yf.download(
+            "SPY",
+            period="6mo",
+            interval="1d",
+            progress=False,
+            threads=False,
+            auto_adjust=False
+        )
 
         if spy is None or spy.empty or len(spy) < 60:
             return True, "⚠️ Market data unavailable. Proceeding."
 
-        # 🔥 flatten multi-index
         if isinstance(spy.columns, pd.MultiIndex):
             spy.columns = spy.columns.get_level_values(0)
 
         close = spy["Close"]
 
-        # 🔥 critical fix: force Series
         if isinstance(close, pd.DataFrame):
-            close = close.squeeze()
-
-        # 🔥 ensure it's truly 1D
-        if len(close.shape) > 1:
             close = close.iloc[:, 0]
 
         ma20 = close.rolling(20).mean()
         ma50 = close.rolling(50).mean()
 
-        latest_close = float(close.iloc[-1])
-        latest_ma20 = float(ma20.iloc[-1])
-        latest_ma50 = float(ma50.iloc[-1])
+        latest_close = get_scalar(close.iloc[-1])
+        latest_ma20 = get_scalar(ma20.iloc[-1])
+        latest_ma50 = get_scalar(ma50.iloc[-1])
 
         market_good = latest_close > latest_ma20 and latest_close > latest_ma50
 
@@ -376,7 +387,7 @@ def market_ok():
         return market_good, msg
 
     except Exception as e:
-        return True, f"⚠️ Market filter error: {e}"
+        return True, f"⚠️ Market filter error: {e}. Proceeding cautiously."
 # =========================
 # FETCH DATA (YOUR VERSION)
 # =========================

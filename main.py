@@ -411,8 +411,8 @@ def fetch_data(ticker):
 
         df = yf.download(
             ticker,
-            period="3mo",
-            interval="1d",
+            period="1mo",
+            interval="1h",
             progress=False,
             threads=False,
             auto_adjust=False
@@ -530,7 +530,7 @@ def analyze(ticker, df):
         return None
 
     change_1bar = (close / float(prev["Close"]) - 1) * 100
-    if close < 20:
+    if close < 10:
         if change_1bar < 3:
             return None
     else:

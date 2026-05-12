@@ -530,8 +530,12 @@ def analyze(ticker, df):
         return None
 
     change_1bar = (close / float(prev["Close"]) - 1) * 100
-    if change_1bar < 1:
-        return None
+    if close < 20:
+        if change_1bar < 3:
+            return None
+    else:
+        if change_1bar < 2:
+            return None
 
     avg_volume = float(df["Volume"].mean())
 
@@ -550,9 +554,9 @@ def analyze(ticker, df):
         score += 2
         reasons.append("MA20 above MA50")
 
-    if change_1bar > 0.5:
+    if change_1bar >= 2:
         score += 2
-        reasons.append(f"+{change_1bar:.1f}% momentum")
+        reasons.append(f"+{change_1bar:.1f}% strong momentum")
 
     if vol > volavg * 1.1:
         score += 2

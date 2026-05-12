@@ -53,6 +53,14 @@ SLIPPAGE_PCT = 0.001
 
 SEND_MARKET_STATUS = True
 
+BANNED_KEYWORDS = [
+    "2X", "3X",
+    "ULTRA", "BEAR", "BULL",
+    "NVDL", "NVDX",
+    "TQQQ", "SQQQ",
+    "SOXL", "SOXS"
+]
+
 def save_paper_trade(signal):
     file_exists = os.path.exists(PAPER_TRADE_FILE)
 
@@ -498,6 +506,11 @@ def run_fast_universe_scan(stocks):
 def analyze(ticker, df):
     df = df.copy()
 
+    # Block leveraged / synthetic / unwanted products
+    for word in BANNED_KEYWORDS:
+        if word in ticker.upper():
+            return None
+
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
     df["VolAvg20"] = df["Volume"].rolling(20).mean()
@@ -508,11 +521,8 @@ def analyze(ticker, df):
 
     close = float(latest["Close"])
     open_price = float(latest["Open"])
-    gap = abs(open_price - float(prev["Close"])) / float(prev["Close"])
-    
-    if gap > 0.03:   # 3% gap
-        return None
-    
+    prev_close = float(prev["Close"])
+
     ma20 = float(latest["MA20"])
     ma50 = float(latest["MA50"])
     vol = float(latest["Volume"])
@@ -522,19 +532,33 @@ def analyze(ticker, df):
     if pd.isna(ma20) or pd.isna(ma50) or pd.isna(volavg) or pd.isna(atr14):
         return None
 
+    # Gap risk filter
+    gap = abs(open_price - prev_close) / prev_close
+    if gap > 0.03:
+        return None
+
+    # Must close green
     if close < open_price:
         return None
 
+    # Volatility filter
     atr_pct = atr14 / close
     if atr_pct > MAX_ATR_PCT:
         return None
 
-    change_1bar = (close / float(prev["Close"]) - 1) * 100
-    if close < 10:
-        if change_1bar < 3:
+    # Avoid chasing extended moves
+    distance_from_ma20 = (close - ma20) / ma20
+    if distance_from_ma20 > 0.08:
+        return None
+
+    # Momentum check — controlled, not too extended
+    change_1bar = (close / prev_close - 1) * 100
+
+    if close < 20:
+        if change_1bar < 1.5:
             return None
     else:
-        if change_1bar < 2:
+        if change_1bar < 1.0:
             return None
 
     avg_volume = float(df["Volume"].mean())
@@ -554,19 +578,22 @@ def analyze(ticker, df):
         score += 2
         reasons.append("MA20 above MA50")
 
-    if change_1bar >= 2:
+    if change_1bar >= 1.0:
         score += 2
-        reasons.append(f"+{change_1bar:.1f}% strong momentum")
+        reasons.append(f"+{change_1bar:.1f}% momentum")
 
     if vol > volavg * 1.1:
         score += 2
         reasons.append("volume spike")
 
     previous_high_10 = float(df["High"].shift(1).rolling(10).max().iloc[-1])
-    if close > previous_high_10 * 1.01:
-        score += 2
-        reasons.append("clean breakout")
 
+    # Softer breakout — avoid entering too late
+    if close > previous_high_10:
+        score += 2
+        reasons.append("breakout above previous 10-bar high")
+
+    # Stricter rules for low-priced stocks
     if close < 10:
         if avg_volume < 1000000:
             return None
@@ -577,6 +604,7 @@ def analyze(ticker, df):
     if score < MIN_SCORE:
         return None
 
+    # SL/TP
     if close >= 100:
         base_sl_pct = 0.015
         base_tp_pct = 0.035

@@ -61,6 +61,14 @@ BANNED_KEYWORDS = [
     "SOXL", "SOXS"
 ]
 
+LEVERAGED_MODE = True
+
+LEVERAGED_TICKERS = [
+    "NVDL", "NVDX", "TQQQ", "SQQQ",
+    "SOXL", "SOXS", "SPXL", "SPXS",
+    "UPRO", "TNA", "TZA"
+]
+
 def save_paper_trade(signal):
     file_exists = os.path.exists(PAPER_TRADE_FILE)
 
@@ -506,11 +514,13 @@ def run_fast_universe_scan(stocks):
 def analyze(ticker, df):
     df = df.copy()
 
-    # Block leveraged / synthetic / unwanted products
-    for word in BANNED_KEYWORDS:
-        if word in ticker.upper():
-            return None
-
+    is_leveraged = ticker.upper() in LEVERAGED_TICKERS
+    
+    if not LEVERAGED_MODE:
+        for word in BANNED_KEYWORDS:
+            if word in ticker.upper():
+                return None
+                
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
     df["VolAvg20"] = df["Volume"].rolling(20).mean()
@@ -611,6 +621,33 @@ def analyze(ticker, df):
     else:
         base_sl_pct = 0.03
         base_tp_pct = 0.06
+    
+    leveraged_multiplier = 1
+    
+    ticker_upper = ticker.upper()
+    
+    if "3X" in ticker_upper:
+        leveraged_multiplier = 3
+    
+    elif "2X" in ticker_upper:
+        leveraged_multiplier = 2
+    
+    # manual known leveraged tickers
+    elif ticker_upper in [
+        "NVDL", "NVDX",
+        "TQQQ", "SQQQ",
+        "SOXL", "SOXS",
+        "SPXL", "SPXS",
+        "UPRO", "TNA", "TZA"
+    ]:
+        leveraged_multiplier = 3
+
+    if leveraged_multiplier > 1 and score < MIN_SCORE + 1:
+        return None
+    
+    if leveraged_multiplier > 1:
+        base_sl_pct *= leveraged_multiplier
+        base_tp_pct *= leveraged_multiplier
 
     fixed_fee_pct = (FEE_PER_TRADE * 2) / close
     slippage_pct = SLIPPAGE_PCT * 2

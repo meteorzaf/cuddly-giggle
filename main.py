@@ -522,7 +522,6 @@ def run_fast_universe_scan(stocks):
 def analyze(ticker, df):
     df = df.copy()
 
-    is_leveraged = ticker.upper() in LEVERAGED_TICKERS
     
     if not LEVERAGED_MODE:
         for word in BANNED_KEYWORDS:
@@ -619,6 +618,21 @@ def analyze(ticker, df):
         if score < MIN_SCORE + 1:
             return None
 
+    ticker_upper = ticker.upper()
+    
+    leveraged_multiplier = LEVERAGED_MULTIPLIERS.get(ticker_upper, 1)
+    
+    if leveraged_multiplier == 1:
+        if "3X" in ticker_upper:
+            leveraged_multiplier = 3
+        elif "2X" in ticker_upper:
+            leveraged_multiplier = 2
+    
+    is_leveraged = leveraged_multiplier > 1
+
+    if is_leveraged and score < MIN_SCORE + 1:
+        return None
+    
     if score < MIN_SCORE:
         return None
 
@@ -630,18 +644,7 @@ def analyze(ticker, df):
         base_sl_pct = 0.03
         base_tp_pct = 0.06
     
-    leveraged_multiplier = 1
-    
-    ticker_upper = ticker.upper()
 
-    if ticker_upper in LEVERAGED_MULTIPLIERS:
-        leveraged_multiplier = LEVERAGED_MULTIPLIERS[ticker_upper]
-    elif "3X" in ticker_upper:
-        leveraged_multiplier = 3
-    elif "2X" in ticker_upper:
-        leveraged_multiplier = 2
-    else:
-        leveraged_multiplier = 1
     
     if leveraged_multiplier > 1:
         base_sl_pct *= leveraged_multiplier

@@ -64,7 +64,9 @@ LEVERAGED_MULTIPLIERS = {
     "TSLL": 2,
     "NVDL": 2,
     "NVDX": 2,
-    "ADML": 2,
+    "AMDL": 2,
+    "BITX": 2,
+    "MSTX": 2,
 
     "TQQQ": 3,
     "SQQQ": 3,

@@ -55,19 +55,27 @@ SEND_MARKET_STATUS = True
 
 BANNED_KEYWORDS = [
     "2X", "3X",
-    "ULTRA", "BEAR", "BULL",
-    "NVDL", "NVDX",
-    "TQQQ", "SQQQ",
-    "SOXL", "SOXS"
+    "ULTRA", "BEAR", "BULL"
 ]
 
 LEVERAGED_MODE = True
 
-LEVERAGED_TICKERS = [
-    "NVDL", "NVDX", "TQQQ", "SQQQ",
-    "SOXL", "SOXS", "SPXL", "SPXS",
-    "UPRO", "TNA", "TZA"
-]
+LEVERAGED_MULTIPLIERS = {
+    "TSLL": 2,
+    "NVDL": 2,
+    "NVDX": 2,
+    "ADML": 2,
+
+    "TQQQ": 3,
+    "SQQQ": 3,
+    "SOXL": 3,
+    "SOXS": 3,
+    "SPXL": 3,
+    "SPXS": 3,
+    "UPRO": 3,
+    "TNA": 3,
+    "TZA": 3,
+}
 
 def save_paper_trade(signal):
     file_exists = os.path.exists(PAPER_TRADE_FILE)
@@ -625,25 +633,15 @@ def analyze(ticker, df):
     leveraged_multiplier = 1
     
     ticker_upper = ticker.upper()
-    
-    if "3X" in ticker_upper:
+
+    if ticker_upper in LEVERAGED_MULTIPLIERS:
+        leveraged_multiplier = LEVERAGED_MULTIPLIERS[ticker_upper]
+    elif "3X" in ticker_upper:
         leveraged_multiplier = 3
-    
     elif "2X" in ticker_upper:
         leveraged_multiplier = 2
-    
-    # manual known leveraged tickers
-    elif ticker_upper in [
-        "NVDL", "NVDX",
-        "TQQQ", "SQQQ",
-        "SOXL", "SOXS",
-        "SPXL", "SPXS",
-        "UPRO", "TNA", "TZA"
-    ]:
-        leveraged_multiplier = 3
-
-    if leveraged_multiplier > 1 and score < MIN_SCORE + 1:
-        return None
+    else:
+        leveraged_multiplier = 1
     
     if leveraged_multiplier > 1:
         base_sl_pct *= leveraged_multiplier

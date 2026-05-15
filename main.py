@@ -533,10 +533,19 @@ def analyze(ticker, df):
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
     df["VolAvg20"] = df["Volume"].rolling(20).mean()
-    df["ATR14"] = (df["High"] - df["Low"]).rolling(14).mean()
+    high_low = df["High"] - df["Low"]
+    high_close = abs(df["High"] - df["Close"].shift())
+    low_close = abs(df["Low"] - df["Close"].shift())
+    
+    true_range = pd.concat(
+        [high_low, high_close, low_close],
+        axis=1
+    ).max(axis=1)
+    
+    df["ATR14"] = true_range.rolling(14).mean()
 
-    latest = df.iloc[-1]
-    prev = df.iloc[-2]
+    latest = df.iloc[-2]
+    prev = df.iloc[-3]
 
     close = float(latest["Close"])
     open_price = float(latest["Open"])
@@ -594,7 +603,7 @@ def analyze(ticker, df):
         reasons.append("above MA20")
 
     if ma20 > ma50:
-        score += 2
+        score += 1
         reasons.append("MA20 above MA50")
 
     if change_1bar >= 1.0:
@@ -608,7 +617,7 @@ def analyze(ticker, df):
     previous_high_10 = float(df["High"].shift(1).rolling(10).max().iloc[-1])
 
     # Softer breakout — avoid entering too late
-    if close > previous_high_10:
+    if close > previous_high_10 * 1.002:
         score += 2
         reasons.append("breakout above previous 10-bar high")
 
@@ -662,6 +671,8 @@ def analyze(ticker, df):
     if sl >= close:
         return None
 
+    loss_pct = (close - sl) / close
+
     if is_leveraged:
         max_allowed_loss_pct = MAX_LOSS_PCT * leveraged_multiplier
     else:
@@ -678,6 +689,8 @@ def analyze(ticker, df):
         return None
 
     risk_amount = CAPITAL * RISK_PER_TRADE
+    if is_leveraged:
+        risk_amount *= 0.5
     size_by_risk = risk_amount / risk_per_share
     size_by_capital = CAPITAL / close
 

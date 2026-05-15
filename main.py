@@ -27,7 +27,7 @@ PAPER_TRADE_FILE = "paper_trades.csv"
 MAX_ALERTS = 3
 
 RUN_INTERVAL_MINUTES = 60
-MAX_SCAN_STOCKS = 3000
+MAX_SCAN_STOCKS = 2400
 
 ENABLE_MAX_OPEN_TRADES = False
 MAX_OPEN_TRADES = 20
@@ -52,6 +52,8 @@ FEE_PER_TRADE = 0.02
 SLIPPAGE_PCT = 0.001
 
 SEND_MARKET_STATUS = True
+
+VERBOSE_LOGS = False
 
 BANNED_KEYWORDS = [
     "2X", "3X",
@@ -242,8 +244,8 @@ def send_telegram(msg):
             timeout=10
         )
 
-        print("Telegram status:", response.status_code)
-        print("Telegram response:", response.text)
+        if response.status_code != 200:
+            print("Telegram error response:", response.text)
 
     except Exception as e:
         print("Telegram error:", e)
@@ -508,16 +510,17 @@ def run_fast_universe_scan(stocks):
                     success += 1
 
             except Exception as e:
-                print("Future error:", e)
+                if VERBOSE_LOGS:
+                    print("Future error:", e)
 
-            if count % 100 == 0:
+            if VERBOSE_LOGS and count % 500 == 0:
                 print(f"Processed {count} stocks... successes: {success}")
 
     results = list(data_map.items())
 
-    print("Final universe_data size:", len(results))
+    print(f"Scan completed. Checked: {count}, valid: {success}")
     return results
-
+    
 # =========================
 # STRATEGY ENGINE (kept minimal but functional)
 # =========================

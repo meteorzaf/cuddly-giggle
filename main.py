@@ -34,7 +34,7 @@ MAX_OPEN_TRADES = 20
 
 MIN_PRICE = 5
 MIN_AVG_VOLUME = 500000
-MIN_SCORE = 6
+MIN_SCORE = 8
 
 MAX_RISK_PER_TRADE = CAPITAL * RISK_PER_TRADE
 SKIP_IF_ONE_SHARE_RISK_TOO_HIGH = True
@@ -59,8 +59,12 @@ BANNED_KEYWORDS = [
     "2X", "3X",
     "ULTRA", "BEAR", "BULL"
 ]
+BANNED_TICKERS = [
+    "RIOT", "MARA", "BITX", "MSTX", "AMDL", "TSLL",
+    "HOOD", "UPST"
+]
 
-LEVERAGED_MODE = True
+LEVERAGED_MODE = False
 
 LEVERAGED_MULTIPLIERS = {
     "TSLL": 2,
@@ -532,6 +536,9 @@ def analyze(ticker, df):
         for word in BANNED_KEYWORDS:
             if word in ticker.upper():
                 return None
+
+    if ticker.upper() in BANNED_TICKERS:
+        return None
                 
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
@@ -613,9 +620,11 @@ def analyze(ticker, df):
         score += 2
         reasons.append(f"+{change_1bar:.1f}% momentum")
 
-    if vol > volavg * 1.1:
-        score += 2
-        reasons.append("volume spike")
+    if vol < volavg * 1.2:
+        return None
+    
+    score += 2
+    reasons.append("strong volume spike")
 
     previous_high_10 = float(df["High"].shift(1).rolling(10).max().iloc[-1])
 
@@ -802,7 +811,7 @@ def run_scan():
         if ticker in seen_today:
             continue
     
-        if BLOCK_REPEAT_LOSERS and lost_recently(ticker, days=3):
+        if BLOCK_REPEAT_LOSERS and lost_recently(ticker, days=7):
             continue
     
         r = analyze(ticker, df)

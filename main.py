@@ -45,7 +45,7 @@ FAILED_TICKERS = set()
 BLOCK_REPEAT_LOSERS_SAME_DAY = True
 
 MAX_ATR_PCT = 0.05          # skip stocks moving too wildly
-MAX_LOSS_PCT = 0.04         # max SL distance from entry
+MAX_LOSS_PCT = 0.045         # max SL distance from entry
 BLOCK_REPEAT_LOSERS = True
 
 FEE_PER_TRADE = 0.02
@@ -662,8 +662,12 @@ def analyze(ticker, df):
     if sl >= close:
         return None
 
-    loss_pct = (close - sl) / close
-    if loss_pct > MAX_LOSS_PCT:
+    if is_leveraged:
+        max_allowed_loss_pct = MAX_LOSS_PCT * leveraged_multiplier
+    else:
+        max_allowed_loss_pct = MAX_LOSS_PCT
+    
+    if loss_pct > max_allowed_loss_pct:
         return None
 
     risk_per_share = close - sl

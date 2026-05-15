@@ -34,7 +34,7 @@ MAX_OPEN_TRADES = 20
 
 MIN_PRICE = 5
 MIN_AVG_VOLUME = 500000
-MIN_SCORE = 8
+MIN_SCORE = 7
 
 MAX_RISK_PER_TRADE = CAPITAL * RISK_PER_TRADE
 SKIP_IF_ONE_SHARE_RISK_TOO_HIGH = True
@@ -622,7 +622,7 @@ def analyze(ticker, df):
         score += 2
         reasons.append(f"+{change_1bar:.1f}% momentum")
 
-    if vol < volavg * 1.2:
+    if vol < volavg * 1.05:
         return None
     
     score += 2
@@ -813,7 +813,7 @@ def run_scan():
         if ticker in seen_today:
             continue
     
-        if BLOCK_REPEAT_LOSERS and lost_recently(ticker, days=7):
+        if BLOCK_REPEAT_LOSERS and lost_recently(ticker, days=3):
             continue
     
         r = analyze(ticker, df)

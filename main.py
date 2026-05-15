@@ -643,8 +643,8 @@ def analyze(ticker, df):
         base_sl_pct = 0.015
         base_tp_pct = 0.035
     else:
-        base_sl_pct = 0.03
-        base_tp_pct = 0.06
+        base_sl_pct = 0.04
+        base_tp_pct = 0.08
     
 
     

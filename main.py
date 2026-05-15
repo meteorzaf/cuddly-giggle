@@ -53,7 +53,8 @@ SLIPPAGE_PCT = 0.001
 
 SEND_MARKET_STATUS = True
 
-VERBOSE_LOGS = False
+VERBOSE_LOGS = True
+PROGRESS_EVERY = 100
 
 BANNED_KEYWORDS = [
     "2X", "3X",
@@ -517,11 +518,12 @@ def run_fast_universe_scan(stocks):
                 if VERBOSE_LOGS:
                     print("Future error:", e)
 
-            if VERBOSE_LOGS and count % 500 == 0:
-                print(f"Processed {count} stocks... successes: {success}")
+            if VERBOSE_LOGS and count % PROGRESS_EVERY == 0:
+                print(f"Processed {count}/{len(stocks)} stocks... valid: {success}", flush=True)
 
     results = list(data_map.items())
-
+    
+    print(f"Final universe data size: {len(results)}", flush=True)
     print(f"Scan completed. Checked: {count}, valid: {success}")
     return results
     

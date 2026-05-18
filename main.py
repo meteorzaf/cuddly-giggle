@@ -451,6 +451,14 @@ def fetch_data(ticker):
             auto_adjust=False
         )
 
+        if df.empty:
+            print(f"{ticker} empty dataframe")
+            return None
+
+        if len(df) < 60:
+            print(f"{ticker} insufficient candles")
+            return None
+
         if df is None or df.empty or len(df) < 30:
             return None
 

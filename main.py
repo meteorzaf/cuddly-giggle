@@ -444,18 +444,14 @@ def fetch_data(ticker):
 
         df = yf.download(
             ticker,
-            period="1mo",
+            period="3mo",
             interval="1h",
             progress=False,
             threads=False,
             auto_adjust=False
         )
 
-        if df.empty:
-            print(f"{ticker} empty dataframe")
-            return None
-
-        if len(df) < 60:
+        if df is None or df.empty or len(df) < 60:
             print(f"{ticker} insufficient candles")
             return None
 

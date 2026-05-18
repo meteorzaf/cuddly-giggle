@@ -33,8 +33,8 @@ ENABLE_MAX_OPEN_TRADES = False
 MAX_OPEN_TRADES = 20
 
 MIN_PRICE = 5
-MIN_AVG_VOLUME = 100000
-MIN_SCORE = 7
+MIN_AVG_VOLUME = 150000
+MIN_SCORE = 8
 
 MAX_RISK_PER_TRADE = CAPITAL * RISK_PER_TRADE
 SKIP_IF_ONE_SHARE_RISK_TOO_HIGH = True
@@ -826,7 +826,7 @@ def run_scan():
     
     print("Signals found:", len(results))
 
-    results = [r for r in results if r["score"] >= 5]
+    results = [r for r in results if r["score"] >= MIN_SCORE]
     print("High conviction signals:", len(results))
 
     results = sorted(results, key=lambda x: x["score"], reverse=True)[:MAX_ALERTS]

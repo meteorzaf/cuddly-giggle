@@ -440,6 +440,9 @@ import time
 
 def fetch_data(ticker):
     try:
+        if ticker in FAILED_TICKERS:
+            return None
+
         time.sleep(0.005)
 
         df = yf.download(
@@ -452,10 +455,8 @@ def fetch_data(ticker):
         )
 
         if df is None or df.empty or len(df) < 60:
-            print(f"{ticker} insufficient candles")
-            return None
-
-        if df is None or df.empty or len(df) < 30:
+            if VERBOSE_LOGS:
+                print(f"{ticker} insufficient candles", flush=True)
             return None
 
         if isinstance(df.columns, pd.MultiIndex):
@@ -478,8 +479,8 @@ def fetch_data(ticker):
         avg_volume = float(volume_series.mean())
         close_std = float(close_series.std())
 
-#        if latest_close < MIN_PRICE:
-#            return None
+        if latest_close < MIN_PRICE:
+            return None
 
         if avg_volume < MIN_AVG_VOLUME:
             return None
@@ -487,14 +488,12 @@ def fetch_data(ticker):
         if close_std == 0:
             return None
 
-        if ticker in FAILED_TICKERS:
-            return None
-
         return ticker, df
 
     except Exception as e:
         FAILED_TICKERS.add(ticker)
-        print(ticker, "fetch error:", e)
+        if VERBOSE_LOGS:
+            print(ticker, "fetch error:", e, flush=True)
         return None
 # =========================
 # FAST UNIVERSE SCAN (YOUR FUNCTION INTEGRATED)

@@ -595,10 +595,10 @@ def analyze(ticker, df):
     change_1bar = (close / prev_close - 1) * 100
 
     if close < 20:
-        if change_1bar < 1.5:
+        if change_1bar < 1.0:
             return None
     else:
-        if change_1bar < 1.0:
+        if change_1bar < 0.7:
             return None
 
     avg_volume = float(df["Volume"].mean())
@@ -631,7 +631,7 @@ def analyze(ticker, df):
     previous_high_10 = float(df["High"].shift(1).rolling(10).max().iloc[-1])
 
     # Softer breakout — avoid entering too late
-    if close > previous_high_10 * 1.002:
+    if close > previous_high_10:
         score += 2
         reasons.append("breakout above previous 10-bar high")
 

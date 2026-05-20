@@ -34,7 +34,7 @@ MAX_OPEN_TRADES = 20
 
 MIN_PRICE = 5
 MIN_AVG_VOLUME = 150000
-MIN_SCORE = 8
+MIN_SCORE = 9
 
 MAX_RISK_PER_TRADE = CAPITAL * RISK_PER_TRADE
 SKIP_IF_ONE_SHARE_RISK_TOO_HIGH = True
@@ -43,8 +43,9 @@ DAILY_TICKERS_FILE = "seen_today.txt"
 FAILED_TICKERS = set()
 
 BLOCK_REPEAT_LOSERS_SAME_DAY = True
+REPEAT_LOSS_BLOCK_DAYS = 10
 
-MAX_ATR_PCT = 0.05          # skip stocks moving too wildly
+MAX_ATR_PCT = 0.035          # skip stocks moving too wildly
 MAX_LOSS_PCT = 0.045         # max SL distance from entry
 BLOCK_REPEAT_LOSERS = True
 
@@ -63,7 +64,8 @@ BANNED_KEYWORDS = [
 ]
 BANNED_TICKERS = [
     "RIOT", "MARA", "BITX", "MSTX", "AMDL", "TSLL",
-    "HOOD", "UPST"
+    "HOOD", "UPST",    "DKNG", "S", "RUN", "PUMP", "NASA", "NTNX",
+    "PTEN", "BKSY", "CLBT", "DRVN", "FIVN","KRMN", "FROG"
 ]
 
 LEVERAGED_MODE = False
@@ -592,7 +594,7 @@ def analyze(ticker, df):
 
     # Avoid chasing extended moves
     distance_from_ma20 = (close - ma20) / ma20
-    if distance_from_ma20 > 0.08:
+    if distance_from_ma20 > 0.05:
         return None
 
     # Momentum check — controlled, not too extended
@@ -626,7 +628,7 @@ def analyze(ticker, df):
         score += 2
         reasons.append(f"+{change_1bar:.1f}% momentum")
 
-    if vol < volavg * 1.05:
+    if vol < volavg * 1.15:
         return None
     
     score += 2
@@ -638,7 +640,7 @@ def analyze(ticker, df):
         float(df["Close"].iloc[-5:-1].max()) <= previous_high_10
     )
     
-    if close > previous_high_10 and recent_breakout:
+    if close > previous_high_10 * 1.003 and recent_breakout:
         score += 2
         reasons.append("fresh breakout")
 
@@ -821,7 +823,7 @@ def run_scan():
         if ticker in seen_today:
             continue
     
-        if BLOCK_REPEAT_LOSERS and lost_recently(ticker, days=3):
+        if BLOCK_REPEAT_LOSERS and lost_recently(ticker, days=REPEAT_LOSS_BLOCK_DAYS):
             continue
     
         r = analyze(ticker, df)

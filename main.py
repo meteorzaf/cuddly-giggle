@@ -48,7 +48,8 @@ MAX_ATR_PCT = 0.05          # skip stocks moving too wildly
 MAX_LOSS_PCT = 0.045         # max SL distance from entry
 BLOCK_REPEAT_LOSERS = True
 
-FEE_PER_TRADE = 0.02
+BUY_FEE = 0.60
+SELL_FEE = 0.60
 SLIPPAGE_PCT = 0.001
 
 SEND_MARKET_STATUS = True
@@ -187,11 +188,11 @@ def update_open_paper_trades():
 
             if closed_price is None:
                 continue
-
+            
             gross_pnl = (closed_price - entry) * size
 
-            buy_fee = FEE_PER_TRADE
-            sell_fee = FEE_PER_TRADE
+            buy_fee = BUY_FEE
+            sell_fee = SELL_FEE
 
             slippage_cost = (
                 entry * size * SLIPPAGE_PCT
@@ -621,7 +622,7 @@ def analyze(ticker, df):
         score += 1
         reasons.append("MA20 above MA50")
 
-    if change_1bar >= 1.0:
+    if change_1bar >= 0.7:
         score += 2
         reasons.append(f"+{change_1bar:.1f}% momentum")
 
@@ -632,11 +633,14 @@ def analyze(ticker, df):
     reasons.append("strong volume spike")
 
     previous_high_10 = float(df["High"].shift(1).rolling(10).max().iloc[-1])
-
-    # Softer breakout — avoid entering too late
-    if close > previous_high_10:
+    
+    recent_breakout = (
+        float(df["Close"].iloc[-5:-1].max()) <= previous_high_10
+    )
+    
+    if close > previous_high_10 and recent_breakout:
         score += 2
-        reasons.append("breakout above previous 10-bar high")
+        reasons.append("fresh breakout")
 
     # Stricter rules for low-priced stocks
     if close < 10:
@@ -666,11 +670,11 @@ def analyze(ticker, df):
 
     # SL/TP
     if close >= 100:
-        base_sl_pct = 0.015
-        base_tp_pct = 0.035
+        base_sl_pct = 0.0125
+        base_tp_pct = 0.03
     else:
-        base_sl_pct = 0.04
-        base_tp_pct = 0.08
+        base_sl_pct = 0.025
+        base_tp_pct = 0.05
     
 
     
@@ -678,7 +682,8 @@ def analyze(ticker, df):
         base_sl_pct *= leveraged_multiplier
         base_tp_pct *= leveraged_multiplier
 
-    fixed_fee_pct = (FEE_PER_TRADE * 2) / close
+    total_fees = BUY_FEE + SELL_FEE
+    fixed_fee_pct = total_fees / close
     slippage_pct = SLIPPAGE_PCT * 2
     cost_buffer_pct = fixed_fee_pct + slippage_pct
 
@@ -699,7 +704,7 @@ def analyze(ticker, df):
         return None
 
     risk_per_share = close - sl
-    if risk_per_share <= 0:
+    if risk_per_share <= 0.5:
         return None
 
     if SKIP_IF_ONE_SHARE_RISK_TOO_HIGH and risk_per_share > MAX_RISK_PER_TRADE:
@@ -825,9 +830,15 @@ def run_scan():
             results.append(r)
     
     print("Signals found:", len(results))
-
-    results = [r for r in results if r["score"] >= MIN_SCORE]
-    print("High conviction signals:", len(results))
+    
+    filtered_results = [
+        r for r in results
+        if r["score"] >= MIN_SCORE
+    ]
+    
+    print("High conviction:", len(filtered_results))
+    
+    results = filtered_results
 
     results = sorted(results, key=lambda x: x["score"], reverse=True)[:MAX_ALERTS]
     if not results:
@@ -838,9 +849,13 @@ def run_scan():
     msg = "📊 PAPER TRADE SIGNALS\n\n"
 
     for r in results:
-        if r["score"] >= 6:
-            tag = "🔥 HIGH PRIORITY"
-        elif r["score"] >= 5:
+        rr = (r["tp"] - r["entry"]) / (r["entry"] - r["sl"])
+    
+        if r["score"] >= 10:
+            tag = "🚀 ELITE"
+        elif r["score"] >= 8:
+            tag = "🔥 HIGH"
+        elif r["score"] >= 6:
             tag = "✅ GOOD"
         else:
             tag = "⚠️ WEAK"
@@ -853,6 +868,7 @@ def run_scan():
             f"SL: {r['sl']:.2f}\n"
             f"TP: {r['tp']:.2f}\n"
             f"Risk/Share: {(r['entry'] - r['sl']):.2f}\n"
+            f"RR: {rr:.2f}\n"
             f"Size: {r['size']:.2f} shares\n\n"
         )
     

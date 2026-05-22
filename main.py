@@ -583,6 +583,16 @@ def analyze(ticker, df):
     if gap > 0.03:
         return None
 
+    candle_range = float(latest["High"] - latest["Low"])
+    
+    if candle_range <= 0:
+        return None
+    
+    candle_strength = (close - open_price) / candle_range
+    
+    if candle_strength < 0.5:
+        return None
+
     # Must close green
     if close < open_price:
         return None
@@ -641,7 +651,7 @@ def analyze(ticker, df):
     )
     
     if close > previous_high_10 * 1.003 and recent_breakout:
-        score += 2
+        score += 3
         reasons.append("fresh breakout")
 
     # Stricter rules for low-priced stocks

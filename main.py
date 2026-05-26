@@ -15,7 +15,7 @@ import csv
 BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-CAPITAL = 150
+CAPITAL = 100
 RISK_PER_TRADE = 0.02
 MAX_WORKERS = 12
 
@@ -583,6 +583,8 @@ def analyze(ticker, df):
     if gap > 0.03:
         return None
 
+    score = 0
+    reasons = []
     candle_range = float(latest["High"] - latest["Low"])
     
     if candle_range <= 0:
@@ -592,10 +594,24 @@ def analyze(ticker, df):
     
     if candle_strength < 0.5:
         return None
+    
+    if candle_strength > 0.7:
+        score += 1
+        reasons.append("strong candle close")
 
-    # Must close green
-    if close < open_price:
-        return None
+    previous_high_10 = float(df["High"].shift(1).rolling(10).max().iloc[-1])
+    
+    recent_breakout = (float(df["Close"].iloc[-5:-1].max()) <= previous_high_10)
+
+    breakout_pct = (close / previous_high_10 - 1) * 100
+    
+    if breakout_pct > 1.0:
+        score += 1
+        reasons.append("strong breakout")
+
+    if vol > volavg * 1.5:
+        score += 1
+        reasons.append("heavy volume expansion")
 
     # Volatility filter
     atr_pct = atr14 / close
@@ -619,8 +635,6 @@ def analyze(ticker, df):
 
     avg_volume = float(df["Volume"].mean())
 
-    score = 0
-    reasons = []
 
     if close > ma50:
         score += 2
@@ -643,12 +657,6 @@ def analyze(ticker, df):
     
     score += 2
     reasons.append("strong volume spike")
-
-    previous_high_10 = float(df["High"].shift(1).rolling(10).max().iloc[-1])
-    
-    recent_breakout = (
-        float(df["Close"].iloc[-5:-1].max()) <= previous_high_10
-    )
     
     if close > previous_high_10 * 1.003 and recent_breakout:
         score += 3

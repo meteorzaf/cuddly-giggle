@@ -58,9 +58,20 @@ SEND_MARKET_STATUS = True
 VERBOSE_LOGS = True
 PROGRESS_EVERY = 100
 
+ENABLE_EARNINGS_FILTER = True
+EARNINGS_BLACKOUT_DAYS = 3
+
+MIN_MARKET_CAP = 5_000_000_000
+
+BANNED_SECTORS = [
+    "Biotechnology",
+    "Pharmaceuticals"
+]
+
 BANNED_KEYWORDS = [
     "2X", "3X",
-    "ULTRA", "BEAR", "BULL"
+    "ULTRA", "BEAR", "BULL",
+     "BIO", "PHARMA", "THERAPEUTICS"
 ]
 BANNED_TICKERS = [
     "RIOT", "MARA", "BITX", "MSTX", "AMDL", "TSLL",
@@ -532,6 +543,54 @@ def run_fast_universe_scan(stocks):
     print(f"Final universe data size: {len(results)}", flush=True)
     print(f"Scan completed. Checked: {count}, valid: {success}")
     return results
+
+def earnings_nearby(ticker, days=3):
+    try:
+        stock = yf.Ticker(ticker)
+        cal = stock.calendar
+
+        if cal is None or cal.empty:
+            return False
+
+        earnings_date = None
+
+        if "Earnings Date" in cal.index:
+            earnings_date = cal.loc["Earnings Date"][0]
+            print(ticker, stock.calendar)
+
+        if earnings_date is None:
+            return False
+
+        earnings_date = pd.to_datetime(earnings_date).tz_localize(None)
+        today = pd.Timestamp.now().normalize()
+
+        diff = abs((earnings_date.normalize() - today).days)
+
+        return diff <= days
+
+    except Exception:
+        return False
+
+
+def passes_fundamental_safety_filter(ticker):
+    try:
+        info = yf.Ticker(ticker).info
+
+        market_cap = info.get("marketCap", 0)
+        sector = info.get("sector", "")
+        industry = info.get("industry", "")
+
+        if market_cap and market_cap < MIN_MARKET_CAP:
+            return False
+
+        for banned in BANNED_SECTORS:
+            if banned.lower() in sector.lower() or banned.lower() in industry.lower():
+                return False
+
+        return True
+
+    except Exception:
+        return True
     
 # =========================
 # STRATEGY ENGINE (kept minimal but functional)
@@ -547,7 +606,7 @@ def analyze(ticker, df):
 
     if ticker.upper() in BANNED_TICKERS:
         return None
-                
+              
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
     df["VolAvg20"] = df["Volume"].rolling(20).mean()
@@ -686,6 +745,13 @@ def analyze(ticker, df):
         return None
     
     if score < MIN_SCORE:
+        return None
+
+    # Run slow Yahoo fundamental/earnings checks only after technical filters pass
+    if not passes_fundamental_safety_filter(ticker):
+        return None
+    
+    if ENABLE_EARNINGS_FILTER and earnings_nearby(ticker, EARNINGS_BLACKOUT_DAYS):
         return None
 
     # SL/TP

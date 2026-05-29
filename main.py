@@ -15,7 +15,7 @@ import csv
 BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-CAPITAL = 100
+CAPITAL = 10000
 RISK_PER_TRADE = 0.02
 MAX_WORKERS = 12
 

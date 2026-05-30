@@ -48,6 +48,8 @@ REPEAT_LOSS_BLOCK_DAYS = 10
 MAX_ATR_PCT = 0.035          # skip stocks moving too wildly
 MAX_LOSS_PCT = 0.045         # max SL distance from entry
 BLOCK_REPEAT_LOSERS = True
+MAX_POSITION_PCT = 0.01
+MAX_PORTFOLIO_RISK = 0.10
 
 BUY_FEE = 0.60
 SELL_FEE = 0.60
@@ -800,9 +802,19 @@ def analyze(ticker, df):
     if is_leveraged:
         risk_amount *= 0.5
     size_by_risk = risk_amount / risk_per_share
+    
     size_by_capital = CAPITAL / close
-
-    size = int(min(size_by_risk, size_by_capital))
+    
+    max_position_value = CAPITAL * MAX_POSITION_PCT
+    size_by_position_cap = max_position_value / close
+    
+    size = int(
+        min(
+            size_by_risk,
+            size_by_capital,
+            size_by_position_cap
+        )
+    )
 
     if size < 1:
         return None
@@ -855,7 +867,33 @@ def cleanup_seen_file():
 
     with open(DAILY_TICKERS_FILE, "w") as f:
         f.writelines(lines)
+        
+def get_open_portfolio_risk():
+    try:
+        if not os.path.exists(PAPER_TRADE_FILE):
+            return 0
 
+        df = pd.read_csv(PAPER_TRADE_FILE)
+
+        if df.empty:
+            return 0
+
+        open_trades = df[df["status"] == "OPEN"]
+
+        total_risk = 0
+
+        for _, row in open_trades.iterrows():
+            risk = (
+                float(row["entry"])
+                - float(row["sl"])
+            ) * float(row["size"])
+
+            total_risk += risk
+
+        return total_risk
+
+    except Exception:
+        return 0
 
 # =========================
 # SCANNER ENGINE
@@ -945,6 +983,24 @@ def run_scan():
             tag = "✅ GOOD"
         else:
             tag = "⚠️ WEAK"
+
+        current_portfolio_risk = get_open_portfolio_risk()
+        
+        new_trade_risk = (
+            r["entry"]
+            - r["sl"]
+        ) * r["size"]
+        
+        if (
+            current_portfolio_risk
+            + new_trade_risk
+            > CAPITAL * MAX_PORTFOLIO_RISK
+        ):
+            print(
+                f"Portfolio risk limit reached. "
+                f"Skipping {r['ticker']}"
+            )
+            continue
     
         msg += (
             f"{r['ticker']} {tag}\n"

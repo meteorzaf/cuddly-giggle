@@ -65,6 +65,9 @@ EARNINGS_BLACKOUT_DAYS = 3
 
 MIN_MARKET_CAP = 5_000_000_000
 
+SEND_MARKET_STATUS_ON_CHANGE = True
+MARKET_STATUS_FILE = "market_status.json"
+
 BANNED_SECTORS = [
     "Biotechnology",
     "Pharmaceuticals"
@@ -558,7 +561,6 @@ def earnings_nearby(ticker, days=3):
 
         if "Earnings Date" in cal.index:
             earnings_date = cal.loc["Earnings Date"][0]
-            print(ticker, stock.calendar)
 
         if earnings_date is None:
             return False
@@ -895,6 +897,39 @@ def get_open_portfolio_risk():
     except Exception:
         return 0
 
+def load_last_market_status():
+    if not os.path.exists(MARKET_STATUS_FILE):
+        return None
+
+    try:
+        with open(MARKET_STATUS_FILE, "r") as f:
+            data = json.load(f)
+            return data.get("market_good")
+    except Exception:
+        return None
+
+
+def save_market_status(market_good):
+    with open(MARKET_STATUS_FILE, "w") as f:
+        json.dump({"market_good": market_good}, f)
+
+
+def should_send_market_status(market_good):
+    if not SEND_MARKET_STATUS_ON_CHANGE:
+        return SEND_MARKET_STATUS
+
+    last_status = load_last_market_status()
+
+    if last_status is None:
+        save_market_status(market_good)
+        return True
+
+    if last_status != market_good:
+        save_market_status(market_good)
+        return True
+
+    return False
+
 # =========================
 # SCANNER ENGINE
 # =========================
@@ -924,7 +959,7 @@ def run_scan():
     
     print(market_msg)
     
-    if SEND_MARKET_STATUS:
+    if should_send_market_status(market_good):
         send_telegram(market_msg)
     
     if not market_good:

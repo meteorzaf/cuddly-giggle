@@ -48,7 +48,7 @@ REPEAT_LOSS_BLOCK_DAYS = 10
 MAX_ATR_PCT = 0.035          # skip stocks moving too wildly
 MAX_LOSS_PCT = 0.045         # max SL distance from entry
 BLOCK_REPEAT_LOSERS = True
-MAX_POSITION_PCT = 0.01
+MAX_POSITION_PCT = 0.03
 MAX_PORTFOLIO_RISK = 0.10
 
 BUY_FEE = 0.60
@@ -67,6 +67,9 @@ MIN_MARKET_CAP = 5_000_000_000
 
 SEND_MARKET_STATUS_ON_CHANGE = True
 MARKET_STATUS_FILE = "market_status.json"
+
+RETEST_BUFFER = 0.002
+MAX_PULLBACK_PCT = 0.015
 
 BANNED_SECTORS = [
     "Biotechnology",
@@ -724,6 +727,16 @@ def analyze(ticker, df):
     if close > previous_high_10 * 1.003 and recent_breakout:
         score += 3
         reasons.append("fresh breakout")
+    
+    entry = previous_high_10 * (1 + RETEST_BUFFER)
+    
+    pullback_pct = (close - entry) / close
+    
+    if pullback_pct > MAX_PULLBACK_PCT:
+        return None
+
+    if close < entry:
+        return None
 
     # Stricter rules for low-priced stocks
     if close < 10:
@@ -759,7 +772,7 @@ def analyze(ticker, df):
         return None
 
     # SL/TP
-    if close >= 100:
+    if entry >= 100:
         base_sl_pct = 0.0125
         base_tp_pct = 0.03
     else:
@@ -773,17 +786,17 @@ def analyze(ticker, df):
         base_tp_pct *= leveraged_multiplier
 
     total_fees = BUY_FEE + SELL_FEE
-    fixed_fee_pct = total_fees / close
+    fixed_fee_pct = total_fees / entry
     slippage_pct = SLIPPAGE_PCT * 2
     cost_buffer_pct = fixed_fee_pct + slippage_pct
 
-    sl = close * (1 - base_sl_pct)
-    tp = close * (1 + base_tp_pct + cost_buffer_pct)
+    sl = entry * (1 - base_sl_pct)
+    tp = entry * (1 + base_tp_pct + cost_buffer_pct)
 
-    if sl >= close:
+    if sl >= entry:
         return None
 
-    loss_pct = (close - sl) / close
+    loss_pct = (entry - sl) / entry
 
     if is_leveraged:
         max_allowed_loss_pct = MAX_LOSS_PCT * leveraged_multiplier
@@ -793,7 +806,7 @@ def analyze(ticker, df):
     if loss_pct > max_allowed_loss_pct:
         return None
 
-    risk_per_share = close - sl
+    risk_per_share = entry - sl
     if risk_per_share <= 0.5:
         return None
 
@@ -805,10 +818,10 @@ def analyze(ticker, df):
         risk_amount *= 0.5
     size_by_risk = risk_amount / risk_per_share
     
-    size_by_capital = CAPITAL / close
+    size_by_capital = CAPITAL / entry
     
     max_position_value = CAPITAL * MAX_POSITION_PCT
-    size_by_position_cap = max_position_value / close
+    size_by_position_cap = max_position_value / entry
     
     size = int(
         min(
@@ -823,7 +836,7 @@ def analyze(ticker, df):
 
     return {
         "ticker": ticker,
-        "entry": close,
+        "entry": entry,
         "sl": sl,
         "tp": tp,
         "score": score,

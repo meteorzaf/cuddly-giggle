@@ -71,21 +71,20 @@ MARKET_STATUS_FILE = "market_status.json"
 RETEST_BUFFER = 0.002
 MAX_PULLBACK_PCT = 0.015
 
+ENABLE_SECTOR_FILTER = True
 BANNED_SECTORS = [
     "Biotechnology",
     "Pharmaceuticals"
 ]
 
 BANNED_KEYWORDS = [
-    "2X", "3X",
-    "ULTRA", "BEAR", "BULL",
-     "BIO", "PHARMA", "THERAPEUTICS"
+    "2X",
+    "3X",
+    "ULTRA",
+    "BEAR",
+    "BULL"
 ]
-BANNED_TICKERS = [
-    "RIOT", "MARA", "BITX", "MSTX", "AMDL", "TSLL",
-    "HOOD", "UPST",    "DKNG", "S", "RUN", "PUMP", "NASA", "NTNX",
-    "PTEN", "BKSY", "CLBT", "DRVN", "FIVN","KRMN", "FROG"
-]
+BANNED_TICKERS = []
 
 LEVERAGED_MODE = False
 
@@ -595,19 +594,29 @@ def passes_fundamental_safety_filter(ticker):
         info = yf.Ticker(ticker).info
 
         market_cap = info.get("marketCap", 0)
-        sector = info.get("sector", "")
-        industry = info.get("industry", "")
+        sector = str(info.get("sector") or "")
+        industry = str(info.get("industry") or "")
 
         if market_cap and market_cap < MIN_MARKET_CAP:
             return False
 
-        for banned in BANNED_SECTORS:
-            if banned.lower() in sector.lower() or banned.lower() in industry.lower():
-                return False
+        if ENABLE_SECTOR_FILTER:
+            sector_lower = sector.lower()
+            industry_lower = industry.lower()
+
+            for banned in BANNED_SECTORS:
+                banned_lower = banned.lower()
+
+                if (
+                    banned_lower in sector_lower
+                    or banned_lower in industry_lower
+                ):
+                    return False
 
         return True
 
     except Exception:
+        # Don't reject a stock just because Yahoo Finance failed
         return True
     
 # =========================

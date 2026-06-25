@@ -24,7 +24,7 @@ LOG_FILE = "trade_log.json"
 SEEN_FILE = "seen_signals.json"
 
 PAPER_TRADE_FILE = "paper_trades.csv"
-MAX_ALERTS = 3
+MAX_ALERTS = 10
 
 RUN_INTERVAL_MINUTES = 60
 MAX_SCAN_STOCKS = 2400
@@ -48,7 +48,7 @@ REPEAT_LOSS_BLOCK_DAYS = 10
 MAX_ATR_PCT = 0.035          # skip stocks moving too wildly
 MAX_LOSS_PCT = 0.045         # max SL distance from entry
 BLOCK_REPEAT_LOSERS = True
-MAX_POSITION_PCT = 0.03
+MAX_POSITION_PCT = 0.1
 MAX_PORTFOLIO_RISK = 0.10
 
 BUY_FEE = 0.60
@@ -718,7 +718,7 @@ def analyze(ticker, df):
         score += 2
         reasons.append(f"+{change_1bar:.1f}% momentum")
 
-    if vol < volavg * 1.15:
+    if vol < volavg * 1.05:
         return None
     
     score += 2
@@ -735,7 +735,7 @@ def analyze(ticker, df):
     if pullback_pct > MAX_PULLBACK_PCT:
         return None
 
-    if close < entry:
+    if close < entry * 0.999:
         return None
 
     # Stricter rules for low-priced stocks
@@ -807,7 +807,8 @@ def analyze(ticker, df):
         return None
 
     risk_per_share = entry - sl
-    if risk_per_share <= 0.5:
+    
+    if risk_per_share <= 0:
         return None
 
     if SKIP_IF_ONE_SHARE_RISK_TOO_HIGH and risk_per_share > MAX_RISK_PER_TRADE:
@@ -834,12 +835,36 @@ def analyze(ticker, df):
     if size < 1:
         return None
 
+    quality = 0
+
+    volume_ratio = vol / volavg
+    volume_score = max(0, min((volume_ratio - 1) * 25, 25))
+    quality += volume_score
+    
+    breakout_strength = (close - previous_high_10) / previous_high_10
+    quality += min(max(breakout_strength * 1000, 0), 25)
+    
+    momentum_strength = max(change_1bar, 0)
+    quality += min(momentum_strength * 8, 25)
+    
+    trend_strength = (close / ma20 - 1) * 100
+    quality += min(max(trend_strength * 3, 0), 15)
+    
+    ma_strength = (ma20 / ma50 - 1) * 100
+    quality += min(max(ma_strength * 2, 0), 15)
+    
+    atr_penalty = atr_pct * 100
+    quality -= min(atr_penalty * 3, 20)
+    
+    quality = round(quality, 2)
+
     return {
         "ticker": ticker,
         "entry": entry,
         "sl": sl,
         "tp": tp,
         "score": score,
+        "quality": quality,
         "reasons": ", ".join(reasons),
         "size": size
     }
@@ -1012,13 +1037,20 @@ def run_scan():
     
     results = filtered_results
 
-    results = sorted(results, key=lambda x: x["score"], reverse=True)[:MAX_ALERTS]
+    results = sorted(
+        results,
+        key=lambda x: x["quality"],
+        reverse=True
+    )[:MAX_ALERTS]
+    
     if not results:
         print("No signals found")
         send_telegram("No strong setups today.")
         return
 
     msg = "📊 PAPER TRADE SIGNALS\n\n"
+
+    current_portfolio_risk = get_open_portfolio_risk()
 
     for r in results:
         rr = (r["tp"] - r["entry"]) / (r["entry"] - r["sl"])
@@ -1031,8 +1063,6 @@ def run_scan():
             tag = "✅ GOOD"
         else:
             tag = "⚠️ WEAK"
-
-        current_portfolio_risk = get_open_portfolio_risk()
         
         new_trade_risk = (
             r["entry"]
@@ -1053,17 +1083,19 @@ def run_scan():
         msg += (
             f"{r['ticker']} {tag}\n"
             f"Score: {r['score']}\n"
+            f"Quality: {r['quality']:.2f}\n"
             f"Reason: {r['reasons']}\n"
             f"Entry: {r['entry']:.2f}\n"
             f"SL: {r['sl']:.2f}\n"
             f"TP: {r['tp']:.2f}\n"
             f"Risk/Share: {(r['entry'] - r['sl']):.2f}\n"
             f"RR: {rr:.2f}\n"
-            f"Size: {r['size']:.2f} shares\n\n"
+            f"Size: {r['size']} shares\n\n"
         )
     
         save_paper_trade(r)
         save_seen_today(r["ticker"])
+        current_portfolio_risk += new_trade_risk
     
     print("Sending Telegram message...")
     send_telegram(msg)

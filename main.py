@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import csv
+from collections import defaultdict
 
 # =========================
 # CONFIG
@@ -70,6 +71,8 @@ MARKET_STATUS_FILE = "market_status.json"
 
 RETEST_BUFFER = 0.002
 MAX_PULLBACK_PCT = 0.015
+
+REJECT_REASONS = defaultdict(int)
 
 ENABLE_SECTOR_FILTER = True
 BANNED_SECTORS = [
@@ -618,7 +621,10 @@ def passes_fundamental_safety_filter(ticker):
     except Exception:
         # Don't reject a stock just because Yahoo Finance failed
         return True
-    
+
+def reject(reason):
+    REJECT_REASONS[reason] += 1
+    return None
 # =========================
 # STRATEGY ENGINE (kept minimal but functional)
 # =========================
@@ -629,10 +635,10 @@ def analyze(ticker, df):
     if not LEVERAGED_MODE:
         for word in BANNED_KEYWORDS:
             if word in ticker.upper():
-                return None
+                return reject("banned_keyword")
 
     if ticker.upper() in BANNED_TICKERS:
-        return None
+        return reject("banned_ticker")
               
     df["MA20"] = df["Close"].rolling(20).mean()
     df["MA50"] = df["Close"].rolling(50).mean()
@@ -662,24 +668,25 @@ def analyze(ticker, df):
     atr14 = float(latest["ATR14"])
 
     if pd.isna(ma20) or pd.isna(ma50) or pd.isna(volavg) or pd.isna(atr14):
-        return None
+        return reject("missing_indicators")
 
     # Gap risk filter
     gap = abs(open_price - prev_close) / prev_close
     if gap > 0.03:
-        return None
-
+        return reject("gap_risk")
+        
     score = 0
     reasons = []
     candle_range = float(latest["High"] - latest["Low"])
     
     if candle_range <= 0:
-        return None
+        return reject("zero_candle_range")
     
     candle_strength = (close - open_price) / candle_range
     
     if candle_strength < 0.5:
-        return None
+        return reject("weak_candle")
+
     
     if candle_strength > 0.7:
         score += 1
@@ -702,22 +709,22 @@ def analyze(ticker, df):
     # Volatility filter
     atr_pct = atr14 / close
     if atr_pct > MAX_ATR_PCT:
-        return None
-
+        return reject("atr_too_high")
+        
     # Avoid chasing extended moves
     distance_from_ma20 = (close - ma20) / ma20
     if distance_from_ma20 > 0.05:
-        return None
+        return reject("too_extended")
 
     # Momentum check — controlled, not too extended
     change_1bar = (close / prev_close - 1) * 100
 
     if close < 20:
         if change_1bar < 1.0:
-            return None
+            return reject("weak_low_price_momentum")
     else:
         if change_1bar < 0.7:
-            return None
+            return reject("weak_momentum")
 
     avg_volume = float(df["Volume"].mean())
 
@@ -739,7 +746,7 @@ def analyze(ticker, df):
         reasons.append(f"+{change_1bar:.1f}% momentum")
 
     if vol < volavg * 1.05:
-        return None
+        return reject("weak_volume")
     
     score += 2
     reasons.append("strong volume spike")
@@ -753,15 +760,15 @@ def analyze(ticker, df):
     pullback_pct = (close - entry) / close
     
     if pullback_pct > MAX_PULLBACK_PCT:
-        return None
+        return reject("retest_too_far")
 
     if close < entry * 0.999:
-        return None
+        return reject("entry_above_close")
 
     # Stricter rules for low-priced stocks
     if close < 10:
         if avg_volume < 1000000:
-            return None
+            return reject("low_price_low_volume")
 
         if score < MIN_SCORE + 1:
             return None
@@ -782,14 +789,14 @@ def analyze(ticker, df):
         return None
     
     if score < MIN_SCORE:
-        return None
+        return reject("low_score")
 
     # Run slow Yahoo fundamental/earnings checks only after technical filters pass
     if not passes_fundamental_safety_filter(ticker):
-        return None
+        return reject("fundamental_filter")
     
     if ENABLE_EARNINGS_FILTER and earnings_nearby(ticker, EARNINGS_BLACKOUT_DAYS):
-        return None
+        return reject("earnings_nearby")
 
     # SL/TP
     if entry >= 100:
@@ -853,7 +860,7 @@ def analyze(ticker, df):
     )
 
     if size < 1:
-        return None
+        return reject("position_too_small")
 
     quality = 0
 
@@ -998,7 +1005,9 @@ def run_scan():
 
     print("Telegram test sent")
 
-
+    global REJECT_REASONS
+    REJECT_REASONS = defaultdict(int)
+    
     with open("debug_log.txt", "a") as f:
         f.write("Bot started\n")
 
@@ -1047,6 +1056,14 @@ def run_scan():
             results.append(r)
     
     print("Signals found:", len(results))
+    print("Reject summary:")
+    for reason, count in sorted(REJECT_REASONS.items(), key=lambda x: x[1], reverse=True):
+        print(f"{reason}: {count}")
+
+    if results:
+        print(f"Top quality: {max(r['quality'] for r in results):.2f}")
+    else:
+        print("Highest quality: N/A")
     
     filtered_results = [
         r for r in results
@@ -1055,18 +1072,36 @@ def run_scan():
     
     print("High conviction:", len(filtered_results))
     
-    results = filtered_results
-
     results = sorted(
         results,
         key=lambda x: x["quality"],
         reverse=True
     )[:MAX_ALERTS]
     
-    if not results:
-        print("No signals found")
-        send_telegram("No strong setups today.")
-        return
+if not results:
+    print("No signals found")
+
+    top_rejections = sorted(
+        REJECT_REASONS.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )[:5]
+
+    reject_msg = "\n".join(
+        [f"{reason}: {count}" for reason, count in top_rejections]
+    )
+
+    if not reject_msg:
+        reject_msg = "No rejection data available"
+
+    send_telegram(
+        f"{market_msg}\n\n"
+        f"Valid universe: {len(universe_data)}\n\n"
+        f"No signals passed all filters.\n\n"
+        f"Top rejection reasons:\n{reject_msg}"
+    )
+
+    return
 
     msg = "📊 PAPER TRADE SIGNALS\n\n"
 

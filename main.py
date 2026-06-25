@@ -1078,30 +1078,30 @@ def run_scan():
         reverse=True
     )[:MAX_ALERTS]
     
-if not results:
-    print("No signals found")
-
-    top_rejections = sorted(
-        REJECT_REASONS.items(),
-        key=lambda x: x[1],
-        reverse=True
-    )[:5]
-
-    reject_msg = "\n".join(
-        [f"{reason}: {count}" for reason, count in top_rejections]
-    )
-
-    if not reject_msg:
-        reject_msg = "No rejection data available"
-
-    send_telegram(
-        f"{market_msg}\n\n"
-        f"Valid universe: {len(universe_data)}\n\n"
-        f"No signals passed all filters.\n\n"
-        f"Top rejection reasons:\n{reject_msg}"
-    )
-
-    return
+    if not results:
+        print("No signals found")
+    
+        top_rejections = sorted(
+            REJECT_REASONS.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:5]
+    
+        reject_msg = "\n".join(
+            [f"{reason}: {count}" for reason, count in top_rejections]
+        )
+    
+        if not reject_msg:
+            reject_msg = "No rejection data available"
+    
+        send_telegram(
+            f"{market_msg}\n\n"
+            f"Valid universe: {len(universe_data)}\n\n"
+            f"No signals passed all filters.\n\n"
+            f"Top rejection reasons:\n{reject_msg}"
+        )
+    
+        return
 
     msg = "📊 PAPER TRADE SIGNALS\n\n"
 

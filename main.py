@@ -420,12 +420,7 @@ def market_ok():
         if isinstance(spy.columns, pd.MultiIndex):
             spy.columns = spy.columns.get_level_values(0)
 
-        close = spy["Close"]
-
-        if isinstance(close, pd.DataFrame):
-            close = close.iloc[:, 0]
-
-        close = pd.to_numeric(close, errors="coerce").dropna()
+        close = pd.to_numeric(spy["Close"], errors="coerce").dropna()
 
         ma20 = close.rolling(20).mean()
         ma50 = close.rolling(50).mean()
@@ -434,27 +429,43 @@ def market_ok():
         latest_ma20 = float(ma20.iloc[-1])
         latest_ma50 = float(ma50.iloc[-1])
 
-        market_good = latest_close > latest_ma20 and latest_close > latest_ma50
+        above_ma20 = latest_close > latest_ma20
+        above_ma50 = latest_close > latest_ma50
 
-        if market_good:
-            msg = (
-                f"✅ Market OK\n"
-                f"SPY: {latest_close:.2f}\n"
-                f"MA20: {latest_ma20:.2f}\n"
-                f"MA50: {latest_ma50:.2f}"
-            )
+        dist20 = ((latest_close / latest_ma20) - 1) * 100
+        dist50 = ((latest_close / latest_ma50) - 1) * 100
+
+        if above_ma20 and above_ma50:
+            market_state = "STRONG"
+        elif above_ma50:
+            market_state = "NEUTRAL"
         else:
-            msg = (
-                f"⚠️ Market Weak — skipping trades\n"
-                f"SPY: {latest_close:.2f}\n"
-                f"MA20: {latest_ma20:.2f}\n"
-                f"MA50: {latest_ma50:.2f}"
-            )
+            market_state = "WEAK"
+        
+        market_good = market_state != "WEAK"
+        
+        if market_state == "STRONG":
+            strength = "🟢 Strong"
+        elif market_state == "NEUTRAL":
+            strength = "🟡 Neutral"
+        else:
+            strength = "🔴 Weak"
+
+        ma20_icon = "✅" if above_ma20 else "❌"
+        ma50_icon = "✅" if above_ma50 else "❌"
+
+
+        msg = (
+            f"{strength} Market\n\n"
+            f"SPY: {latest_close:.2f}\n\n"
+            f"MA20: {latest_ma20:.2f} {ma20_icon} ({dist20:+.2f}%)\n"
+            f"MA50: {latest_ma50:.2f} {ma50_icon} ({dist50:+.2f}%)"
+        )
 
         return market_good, msg
 
     except Exception as e:
-        return True, f"⚠️ Market error: {e}"
+        return True, f"⚠️ Market filter error:\n{e}"
 # =========================
 # FETCH DATA (YOUR VERSION)
 # =========================
@@ -724,7 +735,7 @@ def analyze(ticker, df):
     score += 2
     reasons.append("strong volume spike")
     
-    if close > previous_high_10 * 1.003 and recent_breakout:
+    if breakout_pct >= 0.3 and recent_breakout:
         score += 3
         reasons.append("fresh breakout")
     

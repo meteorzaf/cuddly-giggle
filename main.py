@@ -1089,9 +1089,12 @@ def run_scan():
         if r:
             results.append(r)
     
+    total_rejections = sum(REJECT_REASONS.values())
+    
     print("Reject summary:")
     for reason, count in sorted(REJECT_REASONS.items(), key=lambda x: x[1], reverse=True):
-        print(f"{reason}: {count}")
+        pct = (count / total_rejections) * 100 if total_rejections else 0
+        print(f"{reason}: {count} ({pct:.1f}%)")
     
     print("\nWeak candle distribution:")
     
@@ -1137,10 +1140,15 @@ def run_scan():
             key=lambda x: x[1],
             reverse=True
         )[:5]
-    
+            
+        total_rejections = sum(REJECT_REASONS.values())
+        
         reject_msg = "\n".join(
-            [f"{reason}: {count}" for reason, count in top_rejections]
-        )
+            [
+                f"{reason}: {count} ({(count / total_rejections) * 100:.1f}%)"
+                for reason, count in top_rejections
+            ]
+        ) if total_rejections else "No rejection data available"
     
         if not reject_msg:
             reject_msg = "No rejection data available"

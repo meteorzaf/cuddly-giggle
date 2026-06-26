@@ -73,6 +73,7 @@ RETEST_BUFFER = 0.002
 MAX_PULLBACK_PCT = 0.015
 
 REJECT_REASONS = defaultdict(int)
+CANDLE_STRENGTH_BUCKETS = defaultdict(int)
 
 ENABLE_SECTOR_FILTER = True
 BANNED_SECTORS = [
@@ -625,6 +626,10 @@ def passes_fundamental_safety_filter(ticker):
 def reject(reason):
     REJECT_REASONS[reason] += 1
     return None
+
+def reject_weak_candle(candle_strength):
+    log_candle_strength(candle_strength)
+    return reject("weak_candle")
 # =========================
 # STRATEGY ENGINE (kept minimal but functional)
 # =========================
@@ -684,10 +689,9 @@ def analyze(ticker, df):
     
     candle_strength = (close - open_price) / candle_range
     
+    
     if candle_strength < 0.5:
-        print(f"{ticker}: candle_strength={candle_strength:.2f}")
-        return reject("weak_candle")
-
+        return reject_weak_candle(candle_strength)
     
     if candle_strength > 0.7:
         score += 1
@@ -896,7 +900,33 @@ def analyze(ticker, df):
         "reasons": ", ".join(reasons),
         "size": size
     }
+def log_candle_strength(value):
+    if value < 0:
+        bucket = "<0.00"
+    elif value < 0.10:
+        bucket = "0.00-0.10"
+    elif value < 0.20:
+        bucket = "0.10-0.20"
+    elif value < 0.30:
+        bucket = "0.20-0.30"
+    elif value < 0.40:
+        bucket = "0.30-0.40"
+    elif value < 0.45:
+        bucket = "0.40-0.45"
+    elif value < 0.50:
+        bucket = "0.45-0.50"
+    elif value < 0.60:
+        bucket = "0.50-0.60"
+    elif value < 0.70:
+        bucket = "0.60-0.70"
+    elif value < 0.80:
+        bucket = "0.70-0.80"
+    elif value < 0.90:
+        bucket = "0.80-0.90"
+    else:
+        bucket = "0.90-1.00"
 
+    CANDLE_STRENGTH_BUCKETS[bucket] += 1
 
 def load_seen_today():
     if not os.path.exists(DAILY_TICKERS_FILE):
@@ -996,18 +1026,21 @@ def should_send_market_status(market_good):
 
     return False
 
+
 # =========================
 # SCANNER ENGINE
 # =========================
 def run_scan():
+    global REJECT_REASONS, CANDLE_STRENGTH_BUCKETS
+    
+    REJECT_REASONS = defaultdict(int)
+    CANDLE_STRENGTH_BUCKETS = defaultdict(int)
+
     print("Bot started...")
     print(f"Run time: {datetime.now()}")
     cleanup_seen_file()
 
     print("Telegram test sent")
-
-    global REJECT_REASONS
-    REJECT_REASONS = defaultdict(int)
     
     with open("debug_log.txt", "a") as f:
         f.write("Bot started\n")
@@ -1056,10 +1089,27 @@ def run_scan():
         if r:
             results.append(r)
     
-    print("Signals found:", len(results))
     print("Reject summary:")
     for reason, count in sorted(REJECT_REASONS.items(), key=lambda x: x[1], reverse=True):
         print(f"{reason}: {count}")
+    
+    print("\nWeak candle distribution:")
+    
+    bucket_order = [
+        "<0.00",
+        "0.00-0.10",
+        "0.10-0.20",
+        "0.20-0.30",
+        "0.30-0.40",
+        "0.40-0.45",
+        "0.45-0.50",
+    ]
+    
+    for bucket in bucket_order:
+        count = CANDLE_STRENGTH_BUCKETS.get(bucket, 0)
+    
+        if count:
+            print(f"{bucket}: {count}")
 
     if results:
         print(f"Top quality: {max(r['quality'] for r in results):.2f}")

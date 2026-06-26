@@ -1095,8 +1095,13 @@ def run_scan():
     for reason, count in sorted(REJECT_REASONS.items(), key=lambda x: x[1], reverse=True):
         pct = (count / total_rejections) * 100 if total_rejections else 0
         print(f"{reason}: {count} ({pct:.1f}%)")
+
+    print(f"\nRejected: {total_rejections}")
+    print(f"Passed: {len(results)}")
+    total_checked_by_analyze = len(results) + total_rejections
+    pass_rate = (len(results) / total_checked_by_analyze) * 100 if total_checked_by_analyze else 0
     
-    print("\nWeak candle distribution:")
+    print(f"Pass rate: {pass_rate:.2f}%")    
     
     bucket_order = [
         "<0.00",
@@ -1108,11 +1113,16 @@ def run_scan():
         "0.45-0.50",
     ]
     
+    print("\nWeak candle distribution:")
+    
+    total_weak_candles = REJECT_REASONS.get("weak_candle", 0)
+    
     for bucket in bucket_order:
         count = CANDLE_STRENGTH_BUCKETS.get(bucket, 0)
     
         if count:
-            print(f"{bucket}: {count}")
+            pct = (count / total_weak_candles) * 100 if total_weak_candles else 0
+            print(f"{bucket}: {count} ({pct:.1f}%)")
 
     if results:
         print(f"Top quality: {max(r['quality'] for r in results):.2f}")

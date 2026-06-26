@@ -685,6 +685,7 @@ def analyze(ticker, df):
     candle_strength = (close - open_price) / candle_range
     
     if candle_strength < 0.5:
+        print(f"{ticker}: candle_strength={candle_strength:.2f}")
         return reject("weak_candle")
 
     

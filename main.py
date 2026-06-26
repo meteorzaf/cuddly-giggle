@@ -1124,7 +1124,7 @@ def run_scan():
     print("High conviction:", len(filtered_results))
     
     results = sorted(
-        results,
+        filtered_results,
         key=lambda x: x["quality"],
         reverse=True
     )[:MAX_ALERTS]

@@ -729,10 +729,10 @@ def analyze(ticker, df):
     change_1bar = (close / prev_close - 1) * 100
 
     if close < 20:
-        if change_1bar < 1.0:
+        if change_1bar < 0.7:
             return reject("weak_low_price_momentum")
     else:
-        if change_1bar < 0.7:
+        if change_1bar < 0.4:
             return reject("weak_momentum")
 
     avg_volume = float(df["Volume"].mean())
@@ -1159,8 +1159,7 @@ def run_scan():
             f"Avg={stock['avg_volume']:,}"
         )
         
-    total_weak_candles = REJECT_REASONS.get("weak_candle", 0)
-    
+    total_weak_candles = sum(CANDLE_STRENGTH_BUCKETS.values())    
     for bucket in bucket_order:
         count = CANDLE_STRENGTH_BUCKETS.get(bucket, 0)
     

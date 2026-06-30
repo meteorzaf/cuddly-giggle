@@ -74,8 +74,7 @@ MAX_PULLBACK_PCT = 0.015
 
 REJECT_REASONS = defaultdict(int)
 CANDLE_STRENGTH_BUCKETS = defaultdict(int)
-
-WEAK_CANDLE_DEBUG = []
+ENTRY_DISTANCE_BUCKETS = defaultdict(int)
 
 ENABLE_SECTOR_FILTER = True
 BANNED_SECTORS = [
@@ -766,12 +765,16 @@ def analyze(ticker, df):
     
     entry = previous_high_10 * (1 + RETEST_BUFFER)
     
-    pullback_pct = (close - entry) / close
-    
+    pullback_pct = (entry - close) / close    
     if pullback_pct > MAX_PULLBACK_PCT:
         return reject("retest_too_far")
 
+    distance_pct = ((entry - close) / close) * 100
+    
     if close < entry * 0.999:
+    
+        log_entry_distance(distance_pct)
+    
         return reject("entry_above_close")
 
     # Stricter rules for low-priced stocks
@@ -796,27 +799,6 @@ def analyze(ticker, df):
 
     if is_leveraged and score < MIN_SCORE + 1:
         return None
-
-    if weak_candle_flag and score < MIN_SCORE + 1:
-        WEAK_CANDLE_DEBUG.append({
-            "ticker": ticker,
-            "strength": candle_strength,
-            "open": open_price,
-            "high": float(latest["High"]),
-            "low": float(latest["Low"]),
-            "close": close,
-            "volume": vol,
-            "avg_volume": volavg,
-            "score": score,
-        })
-    
-        WEAK_CANDLE_DEBUG[:] = sorted(
-            WEAK_CANDLE_DEBUG,
-            key=lambda x: x["strength"],
-            reverse=True
-        )[:10]
-    
-        return reject("weak_candle")
     
     if score < MIN_SCORE:
         return reject("low_score")
@@ -953,6 +935,21 @@ def log_candle_strength(value):
 
     CANDLE_STRENGTH_BUCKETS[bucket] += 1
 
+def log_entry_distance(distance_pct):
+
+    if distance_pct < 0.2:
+        bucket = "0.0-0.2%"
+    elif distance_pct < 0.5:
+        bucket = "0.2-0.5%"
+    elif distance_pct < 1:
+        bucket = "0.5-1.0%"
+    elif distance_pct < 2:
+        bucket = "1.0-2.0%"
+    else:
+        bucket = ">2.0%"
+
+    ENTRY_DISTANCE_BUCKETS[bucket] += 1
+
 def load_seen_today():
     if not os.path.exists(DAILY_TICKERS_FILE):
         return set()
@@ -1056,13 +1053,13 @@ def should_send_market_status(market_good):
 # SCANNER ENGINE
 # =========================
 def run_scan():
-    global REJECT_REASONS, CANDLE_STRENGTH_BUCKETS
-    global WEAK_CANDLE_DEBUG
-
-    WEAK_CANDLE_DEBUG = []
+    global REJECT_REASONS
+    global CANDLE_STRENGTH_BUCKETS
+    global ENTRY_DISTANCE_BUCKETS  
     
     REJECT_REASONS = defaultdict(int)
     CANDLE_STRENGTH_BUCKETS = defaultdict(int)
+    ENTRY_DISTANCE_BUCKETS = defaultdict(int)
 
     print("Bot started...")
     print(f"Run time: {datetime.now()}")
@@ -1118,8 +1115,10 @@ def run_scan():
             results.append(r)
     
     total_rejections = sum(REJECT_REASONS.values())
-    
-    print("Reject summary:")
+
+    print("\n" + "=" * 50)
+    print("Reject summary")
+    print("=" * 50)
     for reason, count in sorted(REJECT_REASONS.items(), key=lambda x: x[1], reverse=True):
         pct = (count / total_rejections) * 100 if total_rejections else 0
         print(f"{reason}: {count} ({pct:.1f}%)")
@@ -1140,31 +1139,33 @@ def run_scan():
         "0.40-0.45",
         "0.45-0.50",
     ]
-    
-    print("\nWeak candle distribution:")
 
-    print("\nFirst 10 weak candle rejects:")
-    
-    for stock in WEAK_CANDLE_DEBUG:
-    
-        print(
-            f"{stock['ticker']:<6} "
-            f"Score={stock['score']} "
-            f"S={stock['strength']:.2f} "
-            f"O={stock['open']:.2f} "
-            f"H={stock['high']:.2f} "
-            f"L={stock['low']:.2f} "
-            f"C={stock['close']:.2f} "
-            f"Vol={stock['volume']:,} "
-            f"Avg={stock['avg_volume']:,}"
-        )
-        
+    print("\n" + "=" * 50)
+    print("Weak candle distribution")
+    print("=" * 50)
     total_weak_candles = sum(CANDLE_STRENGTH_BUCKETS.values())    
     for bucket in bucket_order:
         count = CANDLE_STRENGTH_BUCKETS.get(bucket, 0)
     
         if count:
             pct = (count / total_weak_candles) * 100 if total_weak_candles else 0
+            print(f"{bucket}: {count} ({pct:.1f}%)")
+
+    print("\n" + "=" * 50)
+    print("Entry distance distribution")
+    print("=" * 50)
+    for bucket in [
+        "0.0-0.2%",
+        "0.2-0.5%",
+        "0.5-1.0%",
+        "1.0-2.0%",
+        ">2.0%",
+    ]:
+        count = ENTRY_DISTANCE_BUCKETS.get(bucket, 0)
+        if count:
+            total = REJECT_REASONS.get("entry_above_close", 0)
+            pct = count / total * 100 if total else 0
+    
             print(f"{bucket}: {count} ({pct:.1f}%)")
 
     if results:

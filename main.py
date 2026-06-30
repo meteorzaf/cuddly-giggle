@@ -996,6 +996,15 @@ def build_scan_report(
         f"Pass Rate: {pass_rate:.2f}%\n\n"
     )
 
+    if top_rejections:
+        biggest_reason, biggest_count = top_rejections[0]
+        biggest_pct = biggest_count / total_rejections * 100 if total_rejections else 0
+    
+        report += (
+            f"Biggest Blocker: {biggest_reason} "
+            f"({biggest_pct:.1f}%)\n\n"
+        )
+
     report += "Top Rejections\n"
 
     top_rejections = sorted(

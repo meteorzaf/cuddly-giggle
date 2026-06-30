@@ -692,29 +692,10 @@ def analyze(ticker, df):
     candle_strength = (close - open_price) / candle_range
     
     
-    if candle_strength < 0.5:
-
+     weak_candle_flag = candle_strength < 0.5
+    
+    if weak_candle_flag:
         log_candle_strength(candle_strength)
-    
-        WEAK_CANDLE_DEBUG.append({
-            "ticker": ticker,
-            "strength": candle_strength,
-            "open": open_price,
-            "high": float(latest["High"]),
-            "low": float(latest["Low"]),
-            "close": close,
-            "volume": vol,
-            "avg_volume": volavg,
-            "score": score,
-        })
-    
-        WEAK_CANDLE_DEBUG[:] = sorted(
-            WEAK_CANDLE_DEBUG,
-            key=lambda x: x["strength"],
-            reverse=True
-        )[:10]
-    
-        return reject("weak_candle")
     
     if candle_strength > 0.7:
         score += 1
@@ -815,6 +796,27 @@ def analyze(ticker, df):
 
     if is_leveraged and score < MIN_SCORE + 1:
         return None
+
+    if weak_candle_flag and score < MIN_SCORE + 1:
+        WEAK_CANDLE_DEBUG.append({
+            "ticker": ticker,
+            "strength": candle_strength,
+            "open": open_price,
+            "high": float(latest["High"]),
+            "low": float(latest["Low"]),
+            "close": close,
+            "volume": vol,
+            "avg_volume": volavg,
+            "score": score,
+        })
+    
+        WEAK_CANDLE_DEBUG[:] = sorted(
+            WEAK_CANDLE_DEBUG,
+            key=lambda x: x["strength"],
+            reverse=True
+        )[:10]
+    
+        return reject("weak_candle")
     
     if score < MIN_SCORE:
         return reject("low_score")

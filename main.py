@@ -971,6 +971,141 @@ def log_momentum(change_1bar):
 
     MOMENTUM_BUCKETS[bucket] += 1
 
+def build_scan_report(
+    market_msg,
+    universe_size,
+    results,
+):
+    report = market_msg + "\n\n"
+
+    total_rejections = sum(REJECT_REASONS.values())
+    total_checked = len(results) + total_rejections
+
+    pass_rate = (
+        len(results) / total_checked * 100
+        if total_checked
+        else 0
+    )
+
+    report += (
+        "📊 Scan Report\n\n"
+
+        f"Universe: {universe_size}\n"
+        f"Passed: {len(results)}\n"
+        f"Rejected: {total_rejections}\n"
+        f"Pass Rate: {pass_rate:.2f}%\n\n"
+    )
+
+    report += "Top Rejections\n"
+
+    top_rejections = sorted(
+        REJECT_REASONS.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )[:5]
+
+    for reason, count in top_rejections:
+
+        pct = (
+            count / total_rejections * 100
+            if total_rejections
+            else 0
+        )
+
+        report += (
+            f"• {reason}: "
+            f"{count} ({pct:.1f}%)\n"
+        )
+
+    report += "\n"
+
+    report += "Weak Candle\n"
+
+    total = sum(CANDLE_STRENGTH_BUCKETS.values())
+
+    for bucket in [
+        "<0.00",
+        "0.00-0.10",
+        "0.10-0.20",
+        "0.20-0.30",
+        "0.30-0.40",
+        "0.40-0.45",
+        "0.45-0.50",
+    ]:
+
+        count = CANDLE_STRENGTH_BUCKETS.get(bucket, 0)
+
+        if count:
+
+            pct = count / total * 100 if total else 0
+
+            report += (
+                f"• {bucket}: "
+                f"{pct:.1f}%\n"
+            )
+
+    report += "\n"
+
+    report += "Entry Distance\n"
+
+    total = REJECT_REASONS.get(
+        "entry_above_close",
+        0
+    )
+
+    for bucket in [
+        "0.0-0.2%",
+        "0.2-0.5%",
+        "0.5-1.0%",
+        "1.0-2.0%",
+        ">2.0%",
+    ]:
+
+        count = ENTRY_DISTANCE_BUCKETS.get(bucket, 0)
+
+        if count:
+
+            pct = count / total * 100 if total else 0
+
+            report += (
+                f"• {bucket}: "
+                f"{pct:.1f}%\n"
+            )
+
+    report += "\n"
+
+    report += "Momentum\n"
+
+    total = (
+        REJECT_REASONS.get("weak_momentum", 0)
+        + REJECT_REASONS.get(
+            "weak_low_price_momentum",
+            0
+        )
+    )
+
+    for bucket in [
+        "<-1.0%",
+        "-1.0% to -0.5%",
+        "-0.5% to 0.0%",
+        "0.0% to 0.2%",
+        "0.2% to 0.4%",
+        "0.4% to 0.7%",
+    ]:
+
+        count = MOMENTUM_BUCKETS.get(bucket, 0)
+
+        if count:
+
+            pct = count / total * 100 if total else 0
+
+            report += (
+                f"• {bucket}: "
+                f"{pct:.1f}%\n"
+            )
+
+    return report
+
 def load_seen_today():
     if not os.path.exists(DAILY_TICKERS_FILE):
         return set()
@@ -1139,99 +1274,16 @@ def run_scan():
     
     total_rejections = sum(REJECT_REASONS.values())
 
-    print("\n" + "=" * 50)
-    print("Reject summary")
-    print("=" * 50)
-    for reason, count in sorted(REJECT_REASONS.items(), key=lambda x: x[1], reverse=True):
-        pct = (count / total_rejections) * 100 if total_rejections else 0
-        print(f"{reason}: {count} ({pct:.1f}%)")
-
-    print(f"\nRejected: {total_rejections}")
-    print(f"Passed: {len(results)}")
-    total_checked_by_analyze = len(results) + total_rejections
-    pass_rate = (len(results) / total_checked_by_analyze) * 100 if total_checked_by_analyze else 0
-    
-    print(f"Pass rate: {pass_rate:.2f}%")    
-    
-    bucket_order = [
-        "<0.00",
-        "0.00-0.10",
-        "0.10-0.20",
-        "0.20-0.30",
-        "0.30-0.40",
-        "0.40-0.45",
-        "0.45-0.50",
-    ]
-
-    print("\n" + "=" * 50)
-    print("Weak candle distribution")
-    print("=" * 50)
-    total_weak_candles = sum(CANDLE_STRENGTH_BUCKETS.values())    
-    for bucket in bucket_order:
-        count = CANDLE_STRENGTH_BUCKETS.get(bucket, 0)
-    
-        if count:
-            pct = (count / total_weak_candles) * 100 if total_weak_candles else 0
-            print(f"{bucket}: {count} ({pct:.1f}%)")
-
-    print("\n" + "=" * 50)
-    print("Entry distance distribution")
-    print("=" * 50)
-    for bucket in [
-        "0.0-0.2%",
-        "0.2-0.5%",
-        "0.5-1.0%",
-        "1.0-2.0%",
-        ">2.0%",
-    ]:
-        count = ENTRY_DISTANCE_BUCKETS.get(bucket, 0)
-        if count:
-            total = REJECT_REASONS.get("entry_above_close", 0)
-            pct = count / total * 100 if total else 0
-    
-            print(f"{bucket}: {count} ({pct:.1f}%)")
-
-
-    print("\n" + "=" * 50)
-    print("Momentum distribution")
-    print("=" * 50)
-    
-    momentum_order = [
-        "<-1.0%",
-        "-1.0% to -0.5%",
-        "-0.5% to 0.0%",
-        "0.0% to 0.2%",
-        "0.2% to 0.4%",
-        "0.4% to 0.7%",
-        ">=0.7%",
-    ]
-    
-    total_momentum_rejects = (
-        REJECT_REASONS.get("weak_momentum", 0)
-        + REJECT_REASONS.get("weak_low_price_momentum", 0)
+    report = build_scan_report(
+        market_msg,
+        len(universe_data),
+        results,
     )
     
-    for bucket in momentum_order:
-        count = MOMENTUM_BUCKETS.get(bucket, 0)
-    
-        if count:
-            pct = count / total_momentum_rejects * 100 if total_momentum_rejects else 0
-            print(f"{bucket}: {count} ({pct:.1f}%)")
-
-    if results:
-        print(f"Top quality: {max(r['quality'] for r in results):.2f}")
-    else:
-        print("Highest quality: N/A")
-    
-    filtered_results = [
-        r for r in results
-        if r["score"] >= MIN_SCORE
-    ]
-    
-    print("High conviction:", len(filtered_results))
+    print(report)
     
     results = sorted(
-        filtered_results,
+        results,
         key=lambda x: x["quality"],
         reverse=True
     )[:MAX_ALERTS]
@@ -1257,12 +1309,7 @@ def run_scan():
         if not reject_msg:
             reject_msg = "No rejection data available"
     
-        send_telegram(
-            f"{market_msg}\n\n"
-            f"Valid universe: {len(universe_data)}\n\n"
-            f"No signals passed all filters.\n\n"
-            f"Top rejection reasons:\n{reject_msg}"
-        )
+        send_telegram(report)
     
         return
 
@@ -1316,6 +1363,7 @@ def run_scan():
         current_portfolio_risk += new_trade_risk
     
     print("Sending Telegram message...")
+    send_telegram(report)
     send_telegram(msg)
     print("Done.")
 

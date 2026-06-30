@@ -75,6 +75,7 @@ MAX_PULLBACK_PCT = 0.015
 REJECT_REASONS = defaultdict(int)
 CANDLE_STRENGTH_BUCKETS = defaultdict(int)
 ENTRY_DISTANCE_BUCKETS = defaultdict(int)
+MOMENTUM_BUCKETS = defaultdict(int)
 
 ENABLE_SECTOR_FILTER = True
 BANNED_SECTORS = [
@@ -729,11 +730,13 @@ def analyze(ticker, df):
 
     if close < 20:
         if change_1bar < 0.7:
+            log_momentum(change_1bar)
             return reject("weak_low_price_momentum")
     else:
         if change_1bar < 0.4:
+            log_momentum(change_1bar)
             return reject("weak_momentum")
-
+            
     avg_volume = float(df["Volume"].mean())
 
 
@@ -950,6 +953,24 @@ def log_entry_distance(distance_pct):
 
     ENTRY_DISTANCE_BUCKETS[bucket] += 1
 
+def log_momentum(change_1bar):
+    if change_1bar < -1:
+        bucket = "<-1.0%"
+    elif change_1bar < -0.5:
+        bucket = "-1.0% to -0.5%"
+    elif change_1bar < 0:
+        bucket = "-0.5% to 0.0%"
+    elif change_1bar < 0.2:
+        bucket = "0.0% to 0.2%"
+    elif change_1bar < 0.4:
+        bucket = "0.2% to 0.4%"
+    elif change_1bar < 0.7:
+        bucket = "0.4% to 0.7%"
+    else:
+        bucket = ">=0.7%"
+
+    MOMENTUM_BUCKETS[bucket] += 1
+
 def load_seen_today():
     if not os.path.exists(DAILY_TICKERS_FILE):
         return set()
@@ -1055,11 +1076,13 @@ def should_send_market_status(market_good):
 def run_scan():
     global REJECT_REASONS
     global CANDLE_STRENGTH_BUCKETS
-    global ENTRY_DISTANCE_BUCKETS  
+    global ENTRY_DISTANCE_BUCKETS
+    global MOMENTUM_BUCKETS
     
     REJECT_REASONS = defaultdict(int)
     CANDLE_STRENGTH_BUCKETS = defaultdict(int)
     ENTRY_DISTANCE_BUCKETS = defaultdict(int)
+    MOMENTUM_BUCKETS = defaultdict(int)
 
     print("Bot started...")
     print(f"Run time: {datetime.now()}")
@@ -1166,6 +1189,33 @@ def run_scan():
             total = REJECT_REASONS.get("entry_above_close", 0)
             pct = count / total * 100 if total else 0
     
+            print(f"{bucket}: {count} ({pct:.1f}%)")
+
+
+    print("\n" + "=" * 50)
+    print("Momentum distribution")
+    print("=" * 50)
+    
+    momentum_order = [
+        "<-1.0%",
+        "-1.0% to -0.5%",
+        "-0.5% to 0.0%",
+        "0.0% to 0.2%",
+        "0.2% to 0.4%",
+        "0.4% to 0.7%",
+        ">=0.7%",
+    ]
+    
+    total_momentum_rejects = (
+        REJECT_REASONS.get("weak_momentum", 0)
+        + REJECT_REASONS.get("weak_low_price_momentum", 0)
+    )
+    
+    for bucket in momentum_order:
+        count = MOMENTUM_BUCKETS.get(bucket, 0)
+    
+        if count:
+            pct = count / total_momentum_rejects * 100 if total_momentum_rejects else 0
             print(f"{bucket}: {count} ({pct:.1f}%)")
 
     if results:

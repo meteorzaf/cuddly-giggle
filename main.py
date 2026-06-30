@@ -692,7 +692,7 @@ def analyze(ticker, df):
     candle_strength = (close - open_price) / candle_range
     
     
-     weak_candle_flag = candle_strength < 0.5
+    weak_candle_flag = candle_strength < 0.5
     
     if weak_candle_flag:
         log_candle_strength(candle_strength)
